@@ -1,12 +1,13 @@
 <!doctype html>
 <meta charset="utf-8">
 <script>
-  // .ppt / .pps 之类的旧短链自动跳到 .pptx
+  // .ppt / .pps / .pot 结尾的访问 → 跳到 Office 在线预览对应的 .pptx
   var p = location.pathname;
   if (/\.(ppt|pps|pot)$/i.test(p)) {
-    location.replace(location.origin + p + 'x' + location.search + location.hash);
+    var src = location.origin + p + 'x';
+    location.replace('https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(src));
   } else {
     location.replace(location.origin + '/grokbot-salon-ppt/');
   }
 </script>
-<title>Redirecting…</title>
+<title>Opening in Office viewer…</title>
