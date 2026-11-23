@@ -1,1901 +1,526 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LOIC FM 88.8 · 我如何用 Grok Bot 打造「越用越懂我」的私人电台</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOIC FM 午夜电台</title>
 <style>
-  :root {
-    --bg-deep: #0B1526;
-    --bg-panel: #13233A;
-    --bg-panel-alt: #182C48;
-    --bg-screen: #08101D;
-    --bg-badge: #1B3456;
-    --bg-dark-red: #2B1722;
-    --bg-dark-gold: #292215;
-    --border-subtle: #274469;
-    --border-bright: #376194;
-    --sky-blue: #469BE7;
-    --sky-light: #88C6FA;
-    --warm-gold: #F4B66A;
-    --gold-bright: #FFCE85;
-    --coral-red: #F06E6E;
-    --text-white: #F8FAFC;
-    --text-body: #CFDCEC;
-    --text-muted: #839BB8;
-    --font-zh: "HarmonyOS Sans SC", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
-    --font-mono: "Consolas", "Cascadia Mono", ui-monospace, monospace;
-  }
+:root{
+  --bg:#0D0B09; --bg2:#15110D; --card:#1B1611; --line:rgba(243,235,221,.11); --line2:rgba(243,235,221,.22);
+  --tx:#F3EBDD; --tx2:#C9BDAA; --mute:#857A6B;
+  --amber:#F2A541; --amber2:#FFC978; --amberDim:rgba(242,165,65,.14); --ember:#E0623A;
+  --serif:"Source Han Serif CN","Source Han Serif SC","Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --sans:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"JetBrains Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);overflow:hidden}
+body{color:var(--tx);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+.stage{position:fixed;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center;overflow:hidden;
+  background:radial-gradient(1200px 800px at 82% 18%,rgba(242,165,65,.10),transparent 60%),radial-gradient(900px 700px at 0% 100%,rgba(224,98,58,.06),transparent 60%),var(--bg)}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.07;mix-blend-mode:screen;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+/* 常驻框架 */
+.chrome{position:absolute;left:120px;right:120px;top:56px;display:flex;justify-content:space-between;align-items:center;z-index:5;
+  font:500 18px/1 var(--mono);letter-spacing:.18em;color:var(--mute)}
+.chrome b{color:var(--tx2);font-weight:500}
+.onair{display:inline-flex;align-items:center;gap:14px}
+.onair i{width:10px;height:10px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 0 rgba(224,98,58,.6);animation:pulse 2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 12px rgba(224,98,58,0)}100%{box-shadow:0 0 0 0 rgba(224,98,58,0)}}
+.prog{position:absolute;left:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--amber),var(--amber2));transition:width .6s cubic-bezier(.2,.8,.2,1);z-index:5}
+html[data-slide="1"] .chrome .pg,html[data-slide="10"] .chrome .pg{opacity:0}
 
-  html, body {
-    width: 100%;
-    height: 100%;
-    background: #050A13;
-    color: var(--text-white);
-    font-family: var(--font-zh);
-    overflow: hidden;
-    user-select: none;
-  }
+/* 页面 */
+.slide{position:absolute;inset:0;padding:150px 120px 96px;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility .6s}
+.slide.active{opacity:1;visibility:visible}
+[data-step]{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .7s cubic-bezier(.2,.8,.2,1)}
+[data-step].in{opacity:1;transform:none}
+.is-static [data-step]{opacity:1;transform:none;transition:none}
+.is-static .slide{transition:none}
 
-  #viewport {
-    width: 100vw;
-    height: 100vh;
-    position: relative;
-    overflow: hidden;
-  }
+.kicker{font:500 20px/1 var(--mono);letter-spacing:.24em;color:var(--amber);text-transform:uppercase;display:flex;align-items:center;gap:18px}
+.kicker::before{content:"";width:44px;height:1px;background:var(--amber)}
+h2{font:400 76px/1.18 var(--serif);letter-spacing:-.01em;margin-top:30px;max-width:1500px}
+h2 em,.em{font-style:normal;color:var(--amber)}
+.lead{font:400 30px/1.6 var(--sans);color:var(--tx2);margin-top:22px}
+.mono{font-family:var(--mono)}
+.rule{height:1px;background:var(--line)}
 
-  #stage {
-    width: 1920px;
-    height: 1080px;
-    min-width: 1920px;
-    min-height: 1080px;
-    flex-shrink: 0;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    background: var(--bg-deep);
-    overflow: hidden;
-    transform-origin: center center;
-    box-shadow: 0 30px 100px rgba(0,0,0,0.75);
-  }
+/* 01 封面 */
+.s1{display:grid;grid-template-columns:1fr 520px;align-items:center;padding-top:110px}
+.s1 h1{font:400 112px/1.12 var(--serif);letter-spacing:-.02em;margin-top:44px}
+.s1 h1 .em{display:inline-block}
+.s1 .sub{font:400 32px/1.5 var(--sans);color:var(--tx2);margin-top:44px;max-width:1000px}
+.s1 .meta{display:flex;gap:48px;margin-top:64px;font:500 20px/1 var(--mono);letter-spacing:.16em;color:var(--mute)}
+.s1 .meta b{color:var(--tx);font-weight:500}
+.host{position:relative;height:720px;display:flex;align-items:flex-end;justify-content:center}
+.host .halo{position:absolute;left:50%;top:44%;width:500px;height:500px;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(circle,rgba(242,165,65,.28),rgba(242,165,65,.05) 55%,transparent 70%)}
+.host .ring{position:absolute;left:50%;top:44%;border-radius:50%;border:1px solid var(--line);transform:translate(-50%,-50%)}
+.host img{position:relative;height:640px;image-rendering:pixelated;filter:drop-shadow(0 30px 40px rgba(0,0,0,.6))}
+.dial{position:absolute;left:120px;right:120px;bottom:70px;height:70px}
+.dial .ticks{position:absolute;inset:0 0 26px;background:repeating-linear-gradient(90deg,var(--line2) 0 1px,transparent 1px 16px)}
+.dial .ticks::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(243,235,221,.4) 0 1px,transparent 1px 160px);-webkit-mask:linear-gradient(#000 0 0) top/100% 100% no-repeat}
+.dial .lbl{position:absolute;bottom:0;font:500 15px/1 var(--mono);color:var(--mute);letter-spacing:.1em}
+.dial .needle{position:absolute;top:-10px;bottom:20px;left:4%;width:2px;background:var(--amber);box-shadow:0 0 18px var(--amber)}
+.dial .needle::after{content:"88.8";position:absolute;top:-30px;left:50%;transform:translateX(-50%);font:600 16px/1 var(--mono);color:var(--amber)}
+.active .dial .needle{animation:tune 2.4s cubic-bezier(.2,.8,.2,1) both}
+@keyframes tune{from{left:62%}to{left:4%}}
 
-  #stage::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      radial-gradient(circle at 18% 22%, rgba(70, 155, 231, 0.09), transparent 44%),
-      radial-gradient(circle at 84% 78%, rgba(244, 182, 106, 0.07), transparent 44%),
-      radial-gradient(rgba(136, 198, 250, 0.05) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 36px 36px;
-    pointer-events: none;
-    z-index: 0;
-  }
+/* 02 痛点 */
+.s2 .grid{display:grid;grid-template-columns:900px 1fr;gap:110px;align-items:start}
+.s2 .right-col{padding-top:132px}
+.s2 h2{font-size:64px}
+.bignum{font:400 230px/.9 var(--serif);color:var(--amber);letter-spacing:-.04em;font-variant-numeric:tabular-nums;margin-top:68px}
+.bignum small{font:400 44px/1 var(--serif);color:var(--tx2);margin-left:18px;letter-spacing:0}
+.numcap{font:500 22px/1 var(--mono);letter-spacing:.2em;color:var(--mute);margin-top:30px}
+.scenes{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
+.scene{display:grid;grid-template-columns:120px 1fr;gap:28px;padding:38px 0;border-bottom:1px solid var(--line)}
+.scene .t{font:500 24px/1.4 var(--mono);color:var(--amber)}
+.scene .a{font:400 30px/1.45 var(--sans)}
+.scene .b{font:400 24px/1.5 var(--sans);color:var(--mute);margin-top:10px}
+.s2 .heart{display:flex;align-items:baseline;gap:18px;font:400 30px/1.4 var(--sans);color:var(--tx2);margin-top:62px}
+.s2 .heart b{font:400 64px/1 var(--serif);color:var(--tx)}
+.punch{margin-top:58px;font:400 34px/1.55 var(--serif);color:var(--tx)}
+.punch .em{color:var(--amber)}
 
-  .slide {
-    position: absolute;
-    inset: 0;
-    padding: 40px 80px 44px;
-    display: flex;
-    flex-direction: column;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.4s ease;
-    z-index: 1;
-  }
+/* 03 聊天 */
+.chats{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:64px}
+.chat{background:var(--bg2);border:1px solid var(--line);border-radius:28px;padding:36px 34px 34px;display:flex;flex-direction:column;gap:20px;min-height:470px}
+.s3 .bub{font-size:27px}
+.chat .tag{font:500 18px/1 var(--mono);letter-spacing:.2em;color:var(--mute);display:flex;justify-content:space-between;margin-bottom:10px}
+.chat .tag b{color:var(--amber);font-weight:500}
+.bub{max-width:88%;padding:18px 24px;border-radius:24px;font:400 25px/1.55 var(--sans)}
+.me{align-self:flex-end;background:var(--amber);color:#1A1208;border-bottom-right-radius:8px;font-weight:500}
+.bot{align-self:flex-start;background:#26201A;color:var(--tx);border-bottom-left-radius:8px}
+.tool{align-self:flex-start;font:500 19px/1 var(--mono);color:var(--mute);display:flex;align-items:center;gap:12px;padding-left:6px}
+.tool::before{content:"";width:8px;height:8px;border-radius:50%;background:#5FBF77;box-shadow:0 0 10px #5FBF77}
+.foot{position:absolute;left:120px;right:120px;bottom:96px;display:flex;align-items:center;gap:28px;font:400 28px/1.4 var(--sans);color:var(--tx2)}
+.foot img{height:74px;border-radius:12px;border:1px solid var(--line2)}
 
-  .slide.active {
-    opacity: 1;
-    pointer-events: auto;
-    z-index: 2;
-  }
+/* 04 前传对照 */
+.vs{margin-top:70px;border-top:1px solid var(--line)}
+.vs .vs-head,.vs .row{display:grid;grid-template-columns:1fr 90px 1fr}
+.vs .hd{font:500 20px/1 var(--mono);letter-spacing:.2em;color:var(--mute);padding:28px 0}
+.vs .hd.r{color:var(--amber)}
+.vs .row{border-top:1px solid var(--line)}
+.vs .c{padding:34px 0;font:400 34px/1.35 var(--sans)}
+.vs .c small{display:block;font:400 22px/1.5 var(--sans);color:var(--mute);margin-top:10px}
+.vs .old{color:var(--mute)}
+.vs .old span{text-decoration:line-through;text-decoration-color:rgba(224,98,58,.7);text-decoration-thickness:2px}
+.vs .ar{display:flex;align-items:center;justify-content:center;color:var(--amber);font:400 34px/1 var(--mono)}
+.vs .new{color:var(--tx)}
 
-  body.static-mode .slide,
-  body.static-mode [data-step],
-  body.static-mode .bar-fill {
-    transition: none !important;
-  }
+/* 05 第一步 */
+.s5 .grid{display:grid;grid-template-columns:780px 1fr;gap:90px;margin-top:56px}
+.quote{font:400 40px/1.5 var(--serif);color:var(--tx);padding-left:36px;border-left:3px solid var(--amber)}
+.arch{margin-top:56px;display:grid;grid-template-columns:1fr 150px 1fr;align-items:center}
+.node{border:1px solid var(--line2);border-radius:24px;padding:28px 28px;background:var(--bg2)}
+.node .n{font:500 16px/1 var(--mono);letter-spacing:.2em;color:var(--mute)}
+.node h3{font:400 36px/1.2 var(--serif);margin:14px 0 18px}
+.node.brain h3{color:var(--amber)}
+.node li{list-style:none;font:400 21px/1.75 var(--sans);color:var(--tx2)}
+.link{display:flex;flex-direction:column;gap:22px;align-items:center;font:500 14px/1.2 var(--mono);color:var(--mute);text-align:center}
+.link .ln{width:110px;height:1px;background:var(--amber);position:relative}
+.link .ln::after{content:"";position:absolute;right:-1px;top:-5px;border:5px solid transparent;border-left:9px solid var(--amber)}
+.link .ln.back{background:var(--line2)}
+.link .ln.back::after{right:auto;left:-1px;border-left:5px solid transparent;border-right:9px solid var(--line2)}
+.shot{border-radius:22px;overflow:hidden;border:1px solid var(--line2);box-shadow:0 40px 80px rgba(0,0,0,.55);background:#0A1220}
+.shot img{display:block;width:100%}
+.cap{font:500 17px/1 var(--mono);letter-spacing:.18em;color:var(--mute);margin-top:22px}
 
-  /* Step reveal animation */
-  [data-step] {
-    opacity: 0;
-    transform: translateY(8px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-  }
-  [data-step].revealed,
-  body.static-mode [data-step] {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* 06 冷启动 */
+.steps3{display:flex;gap:0;margin-top:44px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.steps3 div{flex:1;padding:22px 0;font:400 25px/1.4 var(--sans);color:var(--tx2);display:flex;gap:18px;align-items:baseline}
+.steps3 b{font:500 18px/1 var(--mono);color:var(--amber)}
+.s6 .grid{display:grid;grid-template-columns:720px 1fr;gap:90px;margin-top:48px}
+.s6 .shot{background:#fff}
+.bars{display:grid;grid-template-columns:1fr 1fr;gap:56px}
+.bars h4,.top h4{font:500 17px/1 var(--mono);letter-spacing:.2em;color:var(--mute);margin-bottom:26px}
+.bar{margin-bottom:22px}
+.bar .l{display:flex;justify-content:space-between;font:400 23px/1 var(--sans);margin-bottom:12px}
+.bar .l b{font:500 23px/1 var(--mono);color:var(--amber)}
+.bar .tr{height:8px;background:rgba(243,235,221,.07);border-radius:8px;overflow:hidden}
+.bar .tr i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--amber),var(--amber2));border-radius:8px;transition:width 1.2s cubic-bezier(.2,.8,.2,1) .2s}
+.in .bar .tr i,.is-static .bar .tr i{width:var(--w)}
+.top{margin-top:36px}
+.top ol{list-style:none;display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.top li{border:1px solid var(--line);border-radius:18px;padding:22px 18px;background:var(--bg2)}
+.top li span{display:block;font:500 15px/1 var(--mono);color:var(--mute)}
+.top li b{display:block;font:400 26px/1.2 var(--serif);margin:14px 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top li em{font:500 20px/1 var(--mono);color:var(--amber);font-style:normal}
 
-  /* Sequential stagger inside a revealed step */
-  [data-step] .seq-item {
-    opacity: 0;
-    transform: translateY(8px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-  }
-  [data-step].revealed .seq-item,
-  body.static-mode [data-step] .seq-item {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  [data-step].revealed .seq-item:nth-child(2) { transition-delay: 0.25s; }
-  [data-step].revealed .seq-item:nth-child(3) { transition-delay: 0.50s; }
-  [data-step].revealed .seq-item:nth-child(4) { transition-delay: 0.75s; }
-  [data-step].revealed .seq-item:nth-child(5) { transition-delay: 1.00s; }
+/* 07 养熟 */
+.s7 .grid{display:grid;grid-template-columns:820px 1fr;gap:76px;margin-top:34px;align-items:start}
+.mode{margin-bottom:22px}
+.mode:last-child{margin-bottom:0}
+.mode .h{font:500 18px/1 var(--mono);letter-spacing:.18em;color:var(--mute);margin-bottom:12px}
+.mode .h b{color:var(--amber);font-weight:500;margin-right:14px}
+.mode .shot{background:#0A1220}
+.mode .shot img{display:block;width:100%;height:auto}
+.mode .chat{min-height:0;padding:22px 26px;gap:12px}
+.mode .bub{font-size:22px;padding:13px 20px}
+.doc{border:1px solid var(--line2);border-radius:24px;background:var(--bg2);padding:34px 40px}
+.doc .fn{display:flex;justify-content:space-between;font:500 18px/1 var(--mono);color:var(--mute);letter-spacing:.12em;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.doc .fn b{color:var(--amber);font-weight:500}
+.doc li{list-style:none;display:grid;grid-template-columns:80px 1fr;gap:18px;padding:20px 0;border-bottom:1px solid var(--line);font:400 26px/1.4 var(--sans)}
+.doc li:last-child{border:0}
+.doc li span{font:500 17px/1.9 var(--mono);color:var(--amber);letter-spacing:.1em}
+.doc li.x span{color:var(--ember)}
+.loop{display:flex;align-items:center;gap:22px;margin-top:34px;font:400 25px/1 var(--sans);color:var(--tx2)}
+.loop i{font-style:normal;color:var(--amber);font-family:var(--mono)}
+.loop b{color:var(--tx);font-weight:400;font-family:var(--serif);font-size:28px}
 
-  /* Bar wipe animation on P6 */
-  .bar-fill {
-    height: 100%;
-    border-radius: 999px;
-    width: 0;
-    transition: width 0.4s ease;
-  }
-  [data-step].revealed .bar-fill,
-  body.static-mode .bar-fill {
-    width: var(--bar-w);
-  }
+/* 08 演示 */
+.s8 .grid{display:grid;grid-template-columns:1260px 1fr;gap:70px;margin-top:44px;align-items:start}
+.demo{position:relative;aspect-ratio:16/9;border-radius:24px;overflow:hidden;border:1px solid var(--line2);background:#000;box-shadow:0 50px 100px rgba(0,0,0,.6)}
+.demo video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;opacity:0}
+.demo.has-video video{opacity:1}
+.demo .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;color:var(--mute);font:400 24px/1.5 var(--sans);cursor:pointer}
+.demo .ph .pl{width:110px;height:110px;border-radius:50%;border:1px solid var(--amber);display:grid;place-items:center}
+.demo .ph .pl::after{content:"";margin-left:8px;border:18px solid transparent;border-left:28px solid var(--amber);border-right:0}
+.demo.has-video .ph{display:none}
+.demo input[type=file]{display:none}
+.demo .hint{position:absolute;right:22px;bottom:20px;padding:8px 14px;border-radius:999px;background:rgba(13,11,9,.72);border:1px solid rgba(243,235,221,.18);font:500 15px/1 var(--mono);color:rgba(243,235,221,.84);letter-spacing:.12em;transition:opacity .4s;pointer-events:none}
+.demo .vol-ctrl{position:absolute;left:22px;bottom:20px;z-index:4;display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 10px;border-radius:999px;background:rgba(13,11,9,.76);border:1px solid rgba(243,235,221,.2);backdrop-filter:blur(8px);transition:opacity .4s}
+.demo .vol-btn{appearance:none;border:0;background:transparent;color:var(--amber2);width:26px;height:26px;display:grid;place-items:center;cursor:pointer;padding:0;border-radius:50%}
+.demo .vol-btn:hover{background:rgba(242,165,65,.16)}
+.demo .vol-btn svg{width:18px;height:18px;display:block}
+.demo .vol-btn .ic-off{display:none}
+.demo .vol-btn.is-muted{color:var(--mute)}
+.demo .vol-btn.is-muted .ic-on{display:none}
+.demo .vol-btn.is-muted .ic-off{display:block}
+.demo .vol-slider{-webkit-appearance:none;appearance:none;width:112px;height:4px;border-radius:4px;outline:none;cursor:pointer;
+  background:linear-gradient(90deg,var(--amber) 0%,var(--amber) var(--vp,45%),rgba(243,235,221,.22) var(--vp,45%),rgba(243,235,221,.22) 100%)}
+.demo .vol-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--amber2);border:2px solid #0D0B09;box-shadow:0 0 8px rgba(242,165,65,.6);cursor:pointer}
+.demo .vol-val{min-width:40px;text-align:right;font:500 14px/1 var(--mono);color:var(--tx2);letter-spacing:.04em}
+.demo:not(.has-video) .hint,.demo:not(.has-video) .vol-ctrl,.demo.playing:not(.is-fs) .hint,.idle .demo.is-fs .hint,.idle .demo.is-fs .vol-ctrl,.is-static .demo .hint,.is-static .demo .vol-ctrl{opacity:0;pointer-events:none}
+.flow{list-style:none;border-top:1px solid var(--line)}
+.flow li{display:grid;grid-template-columns:56px 1fr;padding:30px 0;border-bottom:1px solid var(--line);font:400 29px/1.35 var(--sans)}
+.flow li b{font:500 18px/1.9 var(--mono);color:var(--amber)}
+.flow .cap{margin-top:30px}
 
-  /* Top Radio HUD Bar */
-  .hud-bar {
-    height: 58px;
-    background: var(--bg-screen);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 14px;
-    padding: 0 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
+/* 09 收口 */
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:76px;border-top:1px solid var(--line)}
+.three div{padding:44px 48px 0 0}
+.three div+div{padding-left:48px;border-left:1px solid var(--line)}
+.three b{font:400 92px/1 var(--serif);color:var(--amber)}
+.three h3{font:400 42px/1.25 var(--serif);margin:28px 0 16px}
+.three p{font:400 24px/1.6 var(--sans);color:var(--mute)}
+.coda{position:absolute;left:120px;right:120px;bottom:110px;padding-left:64px;font:400 46px/1.48 var(--serif)}
+.coda::before{content:"\201C";position:absolute;left:0;top:-12px;font:400 104px/1 Georgia,"Times New Roman",serif;color:var(--amber);opacity:.82}
 
-  .hud-left {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    font-family: var(--font-mono);
-    font-size: 19px;
-    font-weight: 700;
-    color: var(--sky-light);
-    letter-spacing: 0.4px;
-  }
-
-  .led-dot {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--sky-blue);
-    box-shadow: 0 0 10px var(--sky-blue);
-    flex-shrink: 0;
-  }
-  .led-dot.gold {
-    background: var(--warm-gold);
-    box-shadow: 0 0 10px var(--warm-gold);
-  }
-
-  .hud-right {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-  .hud-meta {
-    font-size: 18px;
-    color: var(--text-muted);
-  }
-  .page-pill {
-    font-family: var(--font-mono);
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--warm-gold);
-    background: var(--bg-panel-alt);
-    border: 1.5px solid var(--warm-gold);
-    border-radius: 999px;
-    padding: 4px 18px;
-  }
-
-  .slide-header {
-    margin-top: 22px;
-    margin-bottom: 22px;
-    flex-shrink: 0;
-  }
-  .slide-title {
-    font-size: 46px;
-    font-weight: 700;
-    line-height: 1.22;
-    color: var(--text-white);
-  }
-  .slide-subtitle {
-    margin-top: 10px;
-    font-size: 24px;
-    color: var(--sky-light);
-    font-weight: 400;
-  }
-
-  .slide-body {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Bottom Footer */
-  .hud-footer {
-    margin-top: 18px;
-    padding-top: 12px;
-    border-top: 1.5px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-  .footer-brand {
-    font-family: var(--font-mono);
-    font-size: 15px;
-    color: var(--text-muted);
-    letter-spacing: 1px;
-  }
-  .footer-ticks {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  .tick {
-    width: 22px;
-    height: 8px;
-    border-radius: 4px;
-    background: var(--border-subtle);
-  }
-  .tick.past { background: var(--sky-blue); }
-  .tick.current { width: 32px; background: var(--warm-gold); }
-
-  /* Pills & Cards */
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 5px 16px;
-    border-radius: 999px;
-    font-size: 18px;
-    font-weight: 700;
-    border: 1.5px solid var(--sky-blue);
-    background: var(--bg-badge);
-    color: var(--sky-light);
-    white-space: nowrap;
-  }
-  .pill.gold { border-color: var(--warm-gold); background: var(--bg-panel-alt); color: var(--warm-gold); }
-  .pill.gold-fill { border-color: var(--warm-gold); background: var(--bg-dark-gold); color: var(--warm-gold); }
-  .pill.red { border-color: var(--coral-red); background: var(--bg-dark-red); color: var(--coral-red); }
-  .pill.light { border-color: var(--sky-light); background: var(--bg-screen); color: var(--sky-light); }
-  .pill.neutral { border-color: var(--border-bright); background: var(--bg-panel-alt); color: var(--text-body); }
-
-  .card {
-    background: var(--bg-panel);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 18px;
-    padding: 24px 26px;
-  }
-  .card.screen { background: var(--bg-screen); border-color: var(--border-subtle); }
-  .card.sky { border-color: var(--sky-blue); border-width: 2px; }
-  .card.gold { border-color: var(--warm-gold); border-width: 2px; }
-  .card.gold-tint { background: var(--bg-dark-gold); border-color: var(--warm-gold); border-width: 2px; }
-  .card.red { border-color: var(--coral-red); border-width: 2px; }
-
-  .sprite {
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    object-fit: contain;
-    filter: drop-shadow(0 12px 24px rgba(0,0,0,0.45));
-  }
-
-  /* ── SLIDE 1: COVER ── */
-  .cover-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1170px 1fr;
-    gap: 44px;
-    align-items: center;
-    margin-top: 20px;
-  }
-
-  .mp3-chassis {
-    background: var(--bg-panel);
-    border: 2.5px solid var(--border-bright);
-    border-radius: 30px;
-    padding: 28px 34px 32px;
-    box-shadow: 18px 20px 0 rgba(5, 11, 22, 0.72);
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .mp3-screen {
-    background: var(--bg-screen);
-    border: 2.5px solid var(--sky-blue);
-    border-radius: 18px;
-    padding: 32px 36px 28px;
-  }
-  .mp3-screen-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-family: var(--font-mono);
-    font-size: 18px;
-    font-weight: 700;
-    padding-bottom: 16px;
-    border-bottom: 1.5px solid var(--border-subtle);
-    margin-bottom: 28px;
-  }
-  .cover-title {
-    font-size: 56px;
-    font-weight: 700;
-    line-height: 1.28;
-    color: var(--text-white);
-  }
-  .cover-title .sky { color: var(--sky-light); }
-  .cover-title .gold { color: var(--warm-gold); }
-  .cover-sub {
-    margin-top: 22px;
-    font-size: 25px;
-    color: var(--text-body);
-    line-height: 1.45;
-  }
-  .mp3-progress-wrap { margin-top: 38px; }
-  .mp3-track {
-    height: 12px;
-    background: var(--bg-panel-alt);
-    border-radius: 999px;
-    position: relative;
-  }
-  .mp3-fill {
-    width: 48%;
-    height: 100%;
-    background: var(--warm-gold);
-    border-radius: 999px;
-    position: relative;
-  }
-  .mp3-thumb {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: #fff;
-    border: 3px solid var(--warm-gold);
-    position: absolute;
-    right: -13px;
-    top: -7px;
-  }
-  .mp3-times {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 10px;
-    font-family: var(--font-mono);
-    font-size: 16px;
-    color: var(--text-muted);
-  }
-
-  .mp3-deck {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    padding: 10px 10px 4px;
-  }
-  .led-bars {
-    display: flex;
-    gap: 9px;
-    align-items: flex-end;
-  }
-  .led-seg {
-    width: 18px;
-    height: 48px;
-    border-radius: 5px;
-    background: var(--border-subtle);
-  }
-  .led-seg.gold { background: var(--warm-gold); }
-  .led-seg.sky { background: var(--sky-blue); }
-
-  .transport {
-    display: flex;
-    align-items: center;
-    gap: 28px;
-    align-self: center;
-  }
-  .btn-circle {
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
-    background: var(--bg-screen);
-    border: 3px solid var(--sky-blue);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: transform 0.15s ease;
-  }
-  .btn-circle:hover { transform: scale(1.06); }
-  .btn-circle.play {
-    width: 126px;
-    height: 126px;
-    border-width: 3.5px;
-    border-color: var(--warm-gold);
-    background: var(--bg-dark-gold);
-  }
-
-  #eqCanvas {
-    width: 260px;
-    height: 100px;
-    display: block;
-  }
-
-  .cover-right {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    height: 100%;
-    padding: 8px 0 4px;
-  }
-  .bubble-stack {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-  }
-  .voice-bubble {
-    position: relative;
-    background: var(--bg-panel-alt);
-    border: 1.8px solid var(--sky-blue);
-    border-radius: 20px;
-    padding: 16px 22px;
-  }
-  .voice-bubble::after {
-    content: "";
-    position: absolute;
-    bottom: -14px;
-    left: 55%;
-    border-width: 14px 12px 0 12px;
-    border-style: solid;
-    border-color: var(--bg-panel-alt) transparent transparent transparent;
-  }
-  .voice-bubble.gold {
-    border-color: var(--warm-gold);
-    margin-left: 36px;
-  }
-  .voice-bubble.gold::after {
-    left: 32%;
-  }
-  .voice-bubble .tag {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 17px;
-    font-weight: 700;
-    color: var(--sky-light);
-    margin-bottom: 6px;
-  }
-  .voice-bubble.gold .tag { color: var(--warm-gold); }
-  .voice-bubble .txt { font-size: 23px; font-weight: 700; color: var(--text-white); }
-
-  .mascot-stage {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .cover-sprite {
-    width: 410px;
-    height: 410px;
-    z-index: 1;
-  }
-  .mascot-ring {
-    width: 360px;
-    height: 48px;
-    border-radius: 50%;
-    background: var(--bg-panel-alt);
-    border: 1.8px solid var(--sky-blue);
-    margin-top: -32px;
-    z-index: 0;
-  }
-  .host-tag {
-    margin-top: 18px;
-  }
-
-  .freq-ruler {
-    margin-top: 16px;
-    border-top: 2px solid var(--border-subtle);
-    padding-top: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-family: var(--font-mono);
-    font-size: 16px;
-    color: var(--text-muted);
-  }
-
-  /* ── SLIDE 2: ORIGIN ── */
-  .compare-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 176px 1fr;
-    gap: 20px;
-    align-items: stretch;
-  }
-  .compare-col {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .compare-item {
-    flex: 1;
-    background: var(--bg-screen);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 14px;
-    padding: 18px 22px;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-  }
-  .compare-item h4 { font-size: 26px; margin-bottom: 6px; color: var(--text-white); }
-  .compare-item p { font-size: 22px; color: var(--text-body); line-height: 1.35; }
-  .bridge-box {
-    align-self: center;
-    background: var(--bg-panel-alt);
-    border: 2px solid var(--warm-gold);
-    border-radius: 20px;
-    padding: 24px 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    text-align: center;
-  }
-  .takeaway-bar {
-    margin-top: 20px;
-    background: var(--bg-dark-gold);
-    border: 1.8px solid var(--warm-gold);
-    border-radius: 14px;
-    padding: 16px 28px;
-    text-align: center;
-    font-size: 23px;
-    font-weight: 700;
-    color: var(--warm-gold);
-  }
-
-  /* ── SLIDE 3: PAIN POINT ── */
-  .pain-layout {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1210px 1fr;
-    gap: 32px;
-  }
-  .stat-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 22px;
-    margin-bottom: 22px;
-  }
-  .stat-card {
-    background: var(--bg-panel);
-    border-radius: 16px;
-    padding: 22px 24px;
-    border: 1.5px solid var(--border-subtle);
-  }
-  .stat-num { font-size: 46px; font-weight: 700; line-height: 1.1; }
-  .stat-unit { font-size: 24px; font-weight: 700; color: var(--text-white); margin-left: 6px; }
-  .stat-lbl { margin-top: 12px; font-size: 22px; color: var(--text-body); }
-  .conflict-card {
-    background: var(--bg-panel);
-    border-radius: 16px;
-    padding: 22px 26px;
-    margin-bottom: 18px;
-  }
-  .conflict-head { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
-  .conflict-head h4 { font-size: 27px; font-weight: 700; color: var(--text-white); }
-  .conflict-card p { font-size: 23px; color: var(--text-body); line-height: 1.4; }
-  .chaos-panel {
-    background: var(--bg-screen);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 20px;
-    padding: 24px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .genre-row {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-  .genre-row .pill { width: 100%; }
-
-  /* ── SLIDE 4: DAILY FLOW ── */
-  .two-col-even {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: 1.08fr 1fr;
-    gap: 36px;
-    align-items: stretch;
-  }
-  .prompt-card {
-    background: var(--bg-panel);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 16px;
-    padding: 24px 30px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    justify-content: center;
-    flex: 1;
-    min-height: 0;
-  }
-  .prompt-quote { font-size: 31px; font-weight: 700; color: var(--text-white); }
-
-  /* ── SLIDE 5: ARCHITECTURE ── */
-  .arch-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 410px 1fr;
-    gap: 24px;
-    margin-top: 22px;
-    align-items: stretch;
-  }
-  .arch-card {
-    background: var(--bg-panel);
-    border-radius: 18px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-  .arch-head {
-    padding: 18px 28px;
-    font-size: 27px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .arch-list {
-    padding: 26px 28px 28px;
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    justify-content: space-between;
-  }
-  .arch-row { display: flex; gap: 14px; align-items: flex-start; }
-  .arch-row h5 { font-size: 25px; color: var(--text-white); margin-bottom: 6px; }
-  .arch-row p { font-size: 22px; color: var(--text-body); line-height: 1.35; }
-  .shot-frame {
-    background: var(--bg-screen);
-    border: 1.5px solid var(--sky-blue);
-    border-radius: 12px;
-    padding: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .shot-frame.chat-frame {
-    background: #FCFCFC;
-    padding: 6px 10px;
-  }
-  .shot-frame.gold-border { border-color: var(--warm-gold); }
-  .shot-frame.light-border { border-color: var(--sky-light); }
-  .shot-frame img {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    border-radius: 6px;
-  }
-  .player-points {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 14px;
-  }
-  .player-point {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 21px;
-    font-weight: 700;
-    color: var(--text-body);
-    line-height: 1.3;
-  }
-  .player-point::before {
-    content: "";
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--warm-gold);
-    flex: none;
-  }
-  .player-point.sky::before { background: var(--sky-light); }
-
-  /* ── SLIDE 6: COLD START ── */
-  .three-col-arrows {
-    display: grid;
-    grid-template-columns: 1fr 34px 1fr 34px 1fr;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 22px;
-    flex-shrink: 0;
-  }
-  .s6-bottom-grid {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: 551px 1fr;
-    gap: 54px;
-    align-items: stretch;
-  }
-  .bar-row {
-    display: grid;
-    grid-template-columns: 130px 1fr 72px;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 18px;
-  }
-  .bar-row.artist-row {
-    grid-template-columns: 94px 1fr 78px;
-  }
-  .bar-track {
-    height: 20px;
-    background: var(--bg-panel-alt);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  /* ── SLIDE 7: FEEDBACK LOOP ── */
-  .step3-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 820px 1fr;
-    gap: 32px;
-    align-items: stretch;
-  }
-  .taste-card {
-    background: var(--bg-screen);
-    border: 1.8px solid var(--border-bright);
-    border-radius: 18px;
-    padding: 26px 32px 28px;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    height: 100%;
-  }
-  .taste-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 29px;
-    font-weight: 700;
-    color: var(--warm-gold);
-    padding-bottom: 16px;
-    border-bottom: 1.5px solid var(--border-subtle);
-    margin-bottom: 24px;
-  }
-  .taste-rules {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 24px;
-    flex: 1;
-    margin-bottom: 26px;
-  }
-  .rule-item {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-  }
-  .rule-item .pill { font-size: 19px; padding: 6px 18px; }
-  .rule-item .desc { font-size: 26px; color: var(--text-body); line-height: 1.35; }
-  .thumbs-mascot {
-    position: absolute;
-    right: 22px;
-    bottom: 20px;
-    width: 268px;
-    height: 268px;
-  }
-
-  /* ── SLIDE 8: VIDEO DEMO ── */
-  .video-bezel {
-    flex: 1;
-    background: var(--bg-panel);
-    border: 2.5px solid var(--sky-blue);
-    border-radius: 22px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .video-viewport {
-    flex: 1;
-    background: var(--bg-screen);
-    border: 2px dashed var(--border-subtle);
-    border-radius: 14px;
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-  }
-  #demoVideo {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: none;
-    background: #000;
-  }
-  #videoTheater {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: #000;
-    display: none;
-    align-items: center;
-    justify-content: center;
-  }
-  #videoTheater.open {
-    display: flex;
-  }
-  #videoTheater video {
-    width: 100vw;
-    height: 100vh;
-    object-fit: contain;
-    background: #000;
-  }
-  .video-placeholder {
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    cursor: pointer;
-  }
-  .demo-steps-row {
-    margin-top: 20px;
-    display: grid;
-    grid-template-columns: 1fr 30px 1fr 30px 1fr 30px 1fr;
-    gap: 8px;
-    align-items: center;
-  }
-  .demo-chip {
-    background: var(--bg-panel-alt);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 14px;
-    padding: 14px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 22px;
-    font-weight: 700;
-  }
-
-  /* ── SLIDE 9: SUMMARY ── */
-  .three-col {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 28px;
-  }
-  .pillar-card {
-    background: var(--bg-panel);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 20px;
-    padding: 26px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .pillar-bar { width: 80px; height: 9px; border-radius: 999px; }
-  .pillar-head { display: flex; align-items: baseline; gap: 14px; }
-  .pillar-num { font-size: 40px; font-weight: 700; line-height: 1; }
-  .pillar-title { font-size: 29px; font-weight: 700; color: var(--text-white); }
-  .pillar-desc { font-size: 23px; color: var(--text-body); line-height: 1.48; }
-  .manifesto {
-    margin-top: 32px;
-    flex: 1;
-    background: var(--bg-dark-gold);
-    border: 2.5px solid var(--warm-gold);
-    border-radius: 20px;
-    padding: 36px 52px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-size: 36px;
-    font-weight: 700;
-    color: var(--gold-bright);
-    line-height: 1.48;
-  }
-
-  /* ── SLIDE 10: THANK YOU ── */
-  .thanks-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 790px 1fr;
-    gap: 44px;
-    margin-top: 22px;
-    align-items: stretch;
-  }
-  .thanks-left {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-  .thanks-right {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    justify-content: center;
-  }
-  .x-card {
-    background: var(--bg-panel);
-    border: 1.5px solid var(--border-subtle);
-    border-radius: 20px;
-    padding: 20px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .x-inner {
-    display: grid;
-    grid-template-columns: 515px 1fr;
-    gap: 20px;
-    align-items: center;
-    justify-items: center;
-  }
-  .wechat-card {
-    background: var(--bg-panel);
-    border: 2px solid var(--warm-gold);
-    border-radius: 20px;
-    padding: 22px 26px;
-    display: grid;
-    grid-template-columns: 356px 1fr;
-    gap: 28px;
-    align-items: center;
-  }
-  .white-frame {
-    background: #ffffff;
-    border-radius: 14px;
-    padding: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .white-frame img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    display: block;
-    border-radius: 8px;
-  }
-
-  /* Floating Presenter Controls */
-  #navControls {
-    position: fixed;
-    bottom: 18px;
-    right: 22px;
-    display: flex;
-    gap: 10px;
-    z-index: 50;
-    opacity: 0.35;
-    transition: opacity 0.2s;
-  }
-  #navControls:hover { opacity: 1; }
-  body.static-mode #navControls { display: none !important; }
-  .nav-btn {
-    background: rgba(13, 24, 41, 0.92);
-    border: 1.5px solid var(--border-bright);
-    color: var(--sky-light);
-    font-family: var(--font-mono);
-    font-size: 14px;
-    padding: 8px 14px;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-  .nav-btn:hover { border-color: var(--warm-gold); color: var(--warm-gold); }
+/* 10 致谢 */
+.s10{display:grid;grid-template-columns:1fr 780px;align-items:center;gap:48px;padding:126px 110px 96px}
+.s10 h1{font:400 104px/1.08 var(--serif);letter-spacing:-.02em;margin-top:26px}
+.s10 .lead{margin-top:18px;font-size:28px}
+.mascot-row{display:flex;align-items:center;gap:24px;margin-top:34px}
+.thanks-host{position:relative;width:300px;height:390px;flex:0 0 300px;display:flex;align-items:flex-end;justify-content:center}
+.thanks-host .halo{position:absolute;left:50%;top:48%;width:300px;height:300px;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(circle,rgba(242,165,65,.26),rgba(242,165,65,.05) 56%,transparent 72%)}
+.thanks-host .ring{position:absolute;left:50%;top:48%;width:336px;height:336px;transform:translate(-50%,-50%);border-radius:50%;border:1px solid var(--line)}
+.thanks-host .floor{position:absolute;left:50%;bottom:6px;width:210px;height:28px;transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(242,165,65,.26),rgba(242,165,65,.04) 68%,transparent 100%);border:1px solid rgba(242,165,65,.24)}
+.thanks-host img{position:relative;height:368px;image-rendering:pixelated;filter:drop-shadow(0 20px 28px rgba(0,0,0,.6));animation:floaty 3.6s ease-in-out infinite}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.invite{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:16px}
+.invite .bubble{position:relative;background:linear-gradient(135deg,rgba(242,165,65,.15),rgba(27,22,17,.94));border:1px solid rgba(242,165,65,.42);border-radius:22px;padding:22px 26px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+.invite .bubble::before{content:"";position:absolute;left:-10px;top:40px;width:18px;height:18px;background:#241B11;border-left:1px solid rgba(242,165,65,.42);border-bottom:1px solid rgba(242,165,65,.42);transform:rotate(45deg)}
+.invite .bubble strong{display:block;font:500 28px/1.4 var(--serif);color:var(--amber2)}
+.invite .bubble span{display:block;margin-top:8px;font:400 21px/1.5 var(--sans);color:var(--tx2)}
+.invite .arrow-wrap{display:flex;align-items:center;gap:14px;padding-left:10px;width:100%;color:var(--amber)}
+.invite .arrow-wrap span{font:500 18px/1 var(--mono);letter-spacing:.14em;color:var(--amber);white-space:nowrap}
+.invite .arrow-svg{flex:1;min-width:220px;height:54px;overflow:visible;animation:nudge 2.2s ease-in-out infinite}
+@keyframes nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(10px)}}
+.s10 .who-line{margin-top:26px;font:500 18px/1.4 var(--mono);letter-spacing:.12em;color:var(--mute)}
+.s10 .who-line b{color:var(--tx);font-weight:500}
+.qr-panel{position:relative;background:linear-gradient(160deg,rgba(242,165,65,.09),rgba(21,17,13,.96) 52%);border:1px solid rgba(242,165,65,.30);border-radius:32px;padding:34px 36px 30px;box-shadow:0 36px 80px rgba(0,0,0,.55)}
+.qr-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.qr-head .ttl{display:flex;align-items:center;gap:14px;font:500 24px/1 var(--sans);color:var(--tx)}
+.qr-head .ttl i{width:10px;height:10px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber)}
+.qr-head .pill{padding:8px 16px;border-radius:999px;background:rgba(242,165,65,.14);border:1px solid rgba(242,165,65,.32);font:500 16px/1 var(--mono);color:var(--amber2);letter-spacing:.1em}
+.qrs{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:26px}
+.qr{text-align:center;background:rgba(13,11,9,.45);border:1px solid var(--line);border-radius:24px;padding:20px 20px 22px}
+.qr .box{background:#FAF6EE;border-radius:18px;padding:16px;box-shadow:0 16px 36px rgba(0,0,0,.4)}
+.qr img{display:block;width:100%;aspect-ratio:1;object-fit:contain;image-rendering:pixelated}
+.qr p{font:500 22px/1.35 var(--mono);color:var(--tx);margin-top:18px;letter-spacing:.04em}
+.qr p span{display:block;margin-top:6px;color:var(--tx2);font-family:var(--sans);font-size:18px;letter-spacing:0}
+.qr-foot{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);text-align:center;font:400 20px/1.4 var(--sans);color:var(--mute)}
+.qr-foot b{color:var(--amber2);font-weight:500}
+.s10 .end{position:absolute;left:110px;bottom:52px;font:500 15px/1 var(--mono);letter-spacing:.28em;color:var(--mute)}
 </style>
 </head>
 <body>
-<div id="viewport">
-  <div id="stage">
-
-    <!-- SLIDE 01: COVER -->
-    <section class="slide active" data-slide="1">
-      <div class="hud-bar">
-        <div class="hud-left">
-          <span class="led-dot"></span>
-          <span>ON AIR · LOIC FM 88.8 // PERSONAL RADIO</span>
-        </div>
-        <div class="hud-right">
-          <span class="hud-meta" style="color:var(--warm-gold);font-weight:700;">2026.11.22（周日）· Grok Bot 线下沙龙 · 分享者：洛伊客</span>
-        </div>
-      </div>
-
-      <div class="cover-grid">
-        <div class="mp3-chassis">
-          <div class="mp3-screen">
-            <div class="mp3-screen-top">
-              <span style="color:var(--sky-blue);display:inline-flex;align-items:center;gap:10px;">
-                <svg width="14" height="16" viewBox="0 0 14 16"><polygon points="1,1 13,8 1,15" fill="#469BE7"/></svg>
-                NOW PLAYING
-              </span>
-              <span style="color:var(--warm-gold);">FM 88.8 · STEREO</span>
-            </div>
-            <h1 class="cover-title">
-              我如何用 <span class="sky">Grok Bot</span><br>
-              打造<span class="gold">「越用越懂我」</span>的私人电台
-            </h1>
-            <p class="cover-sub">Grok Bot 做选歌大脑，自制播放器 Claudio 在后台静默放歌</p>
-            <div class="mp3-progress-wrap">
-              <div class="mp3-track">
-                <div class="mp3-fill"><div class="mp3-thumb"></div></div>
-              </div>
-              <div class="mp3-times">
-                <span>01:22</span>
-                <span>10:00</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="mp3-deck">
-            <div class="led-bars">
-              <span class="led-seg gold"></span><span class="led-seg gold"></span><span class="led-seg gold"></span>
-              <span class="led-seg sky"></span><span class="led-seg sky"></span><span class="led-seg sky"></span>
-              <span class="led-seg"></span><span class="led-seg"></span>
-            </div>
-
-            <div class="transport">
-              <button class="btn-circle" onclick="prevStepOrSlide()" title="上一步">
-                <svg width="42" height="30" viewBox="0 0 42 30">
-                  <polygon points="21,3 3,15 21,27" fill="#88C6FA"/>
-                  <polygon points="39,3 21,15 39,27" fill="#88C6FA"/>
-                </svg>
-              </button>
-              <button class="btn-circle play" onclick="nextStepOrSlide()" title="下一步">
-                <svg width="54" height="54" viewBox="0 0 54 54">
-                  <polygon points="16,9 46,27 16,45" fill="#F4B66A"/>
-                </svg>
-              </button>
-              <button class="btn-circle" onclick="nextStepOrSlide()" title="下一步">
-                <svg width="42" height="30" viewBox="0 0 42 30">
-                  <polygon points="3,3 21,15 3,27" fill="#88C6FA"/>
-                  <polygon points="21,3 39,15 21,27" fill="#88C6FA"/>
-                </svg>
-              </button>
-            </div>
-
-            <canvas id="eqCanvas" width="260" height="100"></canvas>
-          </div>
-        </div>
-
-        <div class="cover-right">
-          <div class="bubble-stack">
-            <div class="voice-bubble">
-              <div class="tag">自然语言点歌</div>
-              <div class="txt">「给我来一首晴天」</div>
-            </div>
-            <div class="voice-bubble gold">
-              <div class="tag">场景专注模式</div>
-              <div class="txt">「去图书馆自习，来点专注纯音乐」</div>
-            </div>
-          </div>
-
-          <div class="mascot-stage">
-            <img class="sprite cover-sprite" src="assets/sprites/loic-01-console.png" alt="Loic Pixel DJ">
-            <div class="mascot-ring"></div>
-            <div class="pill gold host-tag" style="font-size:19px;padding:7px 26px;">DJ HOST · 洛伊客</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="freq-ruler">
-        <span>88.0 MHz</span>
-        <span style="color:var(--warm-gold);font-weight:700;display:inline-flex;align-items:center;gap:8px;">
-          <svg width="12" height="11" viewBox="0 0 12 11"><polygon points="6,0 12,11 0,11" fill="#F4B66A"/></svg>
-          88.8 MHz LOIC FM
-        </span>
-        <span>108.0 MHz</span>
-      </div>
-    </section>
-
-    <!-- SLIDE 02: 01 · 真实痛点 -->
-    <section class="slide" data-slide="2">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 01 · 真实痛点</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">02 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">听了 18 万分钟的歌，却越来越不想自己选歌</h2>
-        <p class="slide-subtitle">1,716 首红心全堆在「我喜欢」里，随机播放总在不合时宜地出戏</p>
-      </div>
-      <div class="slide-body">
-        <div class="pain-layout">
-          <div style="display:flex;flex-direction:column;">
-            <div class="stat-row" data-step="1">
-              <div class="stat-card seq-item" style="border-color:var(--sky-blue);padding:14px 18px;display:flex;flex-direction:column;justify-content:space-between;">
-                <div class="shot-frame" style="background:#FFFFFF;border-color:var(--sky-blue);height:88px;padding:6px 10px;">
-                  <img src="assets/screenshots/cropped/crop-p3-kugou-total.png" alt="酷狗累计听歌 183385 分钟原图">
-                </div>
-                <div class="stat-lbl" style="margin-top:8px;">酷狗累计听歌时长</div>
-              </div>
-              <div class="stat-card seq-item" style="display:flex;flex-direction:column;justify-content:space-between;">
-                <div><span class="stat-num" style="color:var(--warm-gold);">1,716</span><span class="stat-unit">首</span></div>
-                <div class="stat-lbl" style="margin-top:8px;">红心全堆在「我喜欢」里</div>
-              </div>
-              <div class="stat-card seq-item" style="display:flex;flex-direction:column;justify-content:space-between;">
-                <div><span class="stat-num" style="color:var(--sky-light);">随机播放</span></div>
-                <div class="stat-lbl" style="margin-top:8px;">不分场景，或听别人歌单</div>
-              </div>
-            </div>
-
-            <div class="conflict-card card red" data-step="2" style="flex:1;display:flex;flex-direction:column;justify-content:center;">
-              <div class="conflict-head">
-                <span class="pill red" style="font-family:var(--font-mono);min-width:96px;">23:40</span>
-                <h4>睡前放松，随机蹦出一首炸场 DJ</h4>
-              </div>
-              <p>心流被打断，只能切出去手忙脚乱找歌。</p>
-            </div>
-
-            <div class="conflict-card card" data-step="3" style="flex:1;display:flex;flex-direction:column;justify-content:center;">
-              <div class="conflict-head">
-                <span class="pill" style="font-family:var(--font-mono);min-width:96px;">14:00</span>
-                <h4>图书馆单曲循环纯音乐，越听越腻</h4>
-              </div>
-              <p>想换几首同样安静的新歌，又怕切歌破坏氛围。</p>
-            </div>
-
-            <div class="card gold-tint" data-step="4" style="padding:18px 24px;margin-top:auto;">
-              <div style="font-size:23px;font-weight:700;color:var(--warm-gold);">我想要的不是更多歌单，而是一个懂歌、也懂我此刻状态的主持人。</div>
-            </div>
-          </div>
-
-          <div class="chaos-panel" data-step="3">
-            <div class="genre-row">
-              <span class="pill gold">炸场 DJ</span>
-              <span class="pill">睡前钢琴</span>
-            </div>
-            <img class="sprite" src="assets/sprites/loic-02-overwhelmed.png" alt="Overwhelmed Loic" style="width:410px;height:410px;">
-            <div class="genre-row">
-              <span class="pill light">车载流行</span>
-              <span class="pill neutral">摇滚失真</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="2"></div></div>
-    </section>
-
-    <!-- SLIDE 03: 02 · 现在的样子 -->
-    <section class="slide" data-slide="3">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 02 · 现在的样子</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">03 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">点歌，就是跟朋友聊一句</h2>
-        <p class="slide-subtitle">日常只跟 Grok Bot 说话，Claudio 安静待在后台，不弹窗、不抢焦点</p>
-      </div>
-      <div class="slide-body">
-        <div class="two-col-even">
-          <div style="display:flex;flex-direction:column;min-height:0;">
-            <div style="font-size:24px;font-weight:700;color:var(--sky-light);margin-bottom:14px;flex-shrink:0;">真实对话 · 三种高频点歌场景</div>
-            <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
-              <div class="prompt-card" data-step="1" style="padding:12px 18px;gap:8px;flex:1;min-height:0;">
-                <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;">
-                  <span class="pill" style="font-size:16px;padding:3px 13px;">01 精准点播</span>
-                  <span style="font-size:19px;font-weight:700;color:var(--text-body);">报歌名秒切原版</span>
-                </div>
-                <div class="shot-frame chat-frame" style="flex:1;min-height:0;padding:4px 8px;">
-                  <img src="assets/screenshots/cropped/crop-p4-chat-1.png" alt="精准点播真实对话截图">
-                </div>
-              </div>
-              <div class="prompt-card" data-step="2" style="padding:12px 18px;gap:8px;flex:1.35;min-height:0;">
-                <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;">
-                  <span class="pill gold" style="font-size:16px;padding:3px 13px;">02 氛围配乐</span>
-                  <span style="font-size:19px;font-weight:700;color:var(--text-body);">按场景翻红心，不够自动补新歌</span>
-                </div>
-                <div class="shot-frame chat-frame gold-border" style="flex:1;min-height:0;padding:4px 8px;">
-                  <img src="assets/screenshots/cropped/crop-p4-chat-2.png" alt="河边散步真实对话截图">
-                </div>
-              </div>
-              <div class="prompt-card" data-step="3" style="padding:12px 18px;gap:8px;flex:1.08;min-height:0;">
-                <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;">
-                  <span class="pill light" style="font-size:16px;padding:3px 13px;">03 目标场景</span>
-                  <span style="font-size:19px;font-weight:700;color:var(--text-body);">切回自习器乐池，不打断专注</span>
-                </div>
-                <div class="shot-frame chat-frame light-border" style="flex:1;min-height:0;padding:4px 8px;">
-                  <img src="assets/screenshots/cropped/crop-p4-chat-3.png" alt="图书馆自习真实对话截图">
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div data-step="4" style="display:flex;flex-direction:column;min-height:0;">
-            <div class="seq-item" style="font-size:24px;font-weight:700;color:var(--warm-gold);margin-bottom:14px;flex-shrink:0;">后台链路 · 从开口到响起</div>
-            <div style="display:flex;flex-direction:column;flex:1;min-height:0;">
-              <div class="card screen seq-item" style="padding:16px 22px;display:flex;align-items:center;gap:16px;flex-shrink:0;">
-                <span class="pill">STEP 1</span>
-                <div style="font-size:22px;font-weight:700;">结合红心曲库、taste.md 与长期记忆选歌</div>
-              </div>
-              <div class="seq-item" style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-                <svg width="24" height="16" viewBox="0 0 26 22" style="margin:6px 0;"><polygon points="9,0 17,0 17,11 25,11 13,22 1,11 9,11" fill="#F4B66A"/></svg>
-                <div class="card screen" style="width:100%;padding:16px 22px;display:flex;align-items:center;gap:16px;">
-                  <span class="pill">STEP 2</span>
-                  <div style="font-size:22px;font-weight:700;">按意图立即切歌，或顺延排入续播队列</div>
-                </div>
-              </div>
-              <div class="seq-item" style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-                <svg width="24" height="16" viewBox="0 0 26 22" style="margin:6px 0;"><polygon points="9,0 17,0 17,11 25,11 13,22 1,11 9,11" fill="#F4B66A"/></svg>
-                <div class="card screen" style="width:100%;padding:16px 22px;display:flex;align-items:center;gap:16px;">
-                  <span class="pill">STEP 3</span>
-                  <div style="font-size:22px;font-weight:700;">Claudio 后台静默开播，不打断当前工作</div>
-                </div>
-              </div>
-
-              <div class="card gold-tint seq-item" style="margin-top:16px;flex:1;min-height:0;padding:18px 26px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
-                <div>
-                  <div style="margin-bottom:10px;"><span class="pill gold" style="font-size:16px;padding:3px 13px;">后台无感体验</span></div>
-                  <div style="font-size:21px;font-weight:700;line-height:1.38;color:var(--text-white);">
-                    日常只跟 Grok Bot 说话，<br>
-                    除非暂停或赞踩，Claudio 安静待在后台。
-                  </div>
-                </div>
-                <div style="display:flex;justify-content:center;flex:1;min-height:0;align-items:center;padding-top:4px;">
-                  <div class="shot-frame" style="height:100%;max-height:176px;max-width:480px;">
-                    <img src="assets/screenshots/cropped/crop-p4-mini.png" alt="Claudio 迷你模式真机截图">
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="3"></div></div>
-    </section>
-
-    <!-- SLIDE 04: 03 · 为什么是 Grok Bot -->
-    <section class="slide" data-slide="4">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 03 · 为什么是 Grok Bot</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">04 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">同一个播放器，换了个大脑，才从吃灰玩具变成每天在用</h2>
-        <p class="slide-subtitle">灵感来自抖音上的 Claude Code 音乐播放器，真正跑通靠的是 Grok Bot</p>
-      </div>
-      <div class="slide-body">
-        <div class="compare-grid">
-          <div class="card red compare-col" data-step="1">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span class="pill red">旧版 · Claude Code 直连</span>
-              <span style="color:var(--text-muted);font-size:19px;font-weight:700;">做完却吃灰的 3 个硬伤</span>
-            </div>
-            <div class="compare-item">
-              <span class="pill red">01</span>
-              <div><h4>每次新对话都失忆</h4><p>重开会话，听歌品味清零</p></div>
-            </div>
-            <div class="compare-item">
-              <span class="pill red">02</span>
-              <div><h4>切首歌也烧 CLI 额度</h4><p>用编程主力干杂活，太心疼</p></div>
-            </div>
-            <div class="compare-item">
-              <span class="pill red">03</span>
-              <div><h4>酷狗掉线，还把手机挤下线</h4><p>缺少设备身份，后台挂不住</p></div>
-            </div>
-          </div>
-
-          <div class="bridge-box" data-step="2">
-            <svg width="58" height="32" viewBox="0 0 58 32">
-              <polygon points="0,10 36,10 36,2 56,16 36,30 36,22 0,22" fill="#F4B66A"/>
-            </svg>
-            <div style="font-size:19px;font-weight:700;line-height:1.3;">换上<br>Grok Bot</div>
-          </div>
-
-          <div class="card sky compare-col" data-step="3">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span class="pill">现在 · Grok Bot 接管大脑</span>
-              <span style="color:var(--warm-gold);font-size:19px;font-weight:700;">Personal Agent 天生契合</span>
-            </div>
-            <div class="compare-item">
-              <span class="pill gold">01</span>
-              <div><h4>自带跨会话记忆</h4><p>越聊越贴合听歌习惯</p></div>
-            </div>
-            <div class="compare-item">
-              <span class="pill gold">02</span>
-              <div><h4>日常对话里顺手调 API</h4><p>轻量无负担，想到就点</p></div>
-            </div>
-            <div class="compare-item">
-              <span class="pill gold">03</span>
-              <div><h4>dfid + 24h 自动保活</h4><p>稳稳挂在后台，不挤手机</p></div>
-            </div>
-          </div>
-        </div>
-        <div class="takeaway-bar" data-step="4">把「写代码的大脑」换成「懂生活的 Personal Agent」，吃灰玩具才成了每天在用的电台。</div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="4"></div></div>
-    </section>
-
-    <!-- SLIDE 05: 04 · 第一步 建主持人 -->
-    <section class="slide" data-slide="5">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 04 · 第一步 建主持人</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">05 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">第一步：一句话，雇一个专职主持人</h2>
-        <p class="slide-subtitle">先定好清晰分工：谁负责思考选歌，谁负责后台稳定出声</p>
-      </div>
-      <div class="slide-body">
-        <div class="card screen" data-step="1" style="padding:18px 26px;display:flex;align-items:center;gap:22px;">
-          <span class="pill">一句话创建</span>
-          <div style="font-size:24px;font-weight:700;">「帮我建一个专职 Bot：管理 Claudio、按场景选歌、持续记住我的品味。」</div>
-        </div>
-
-        <div class="arch-grid">
-          <div class="arch-card card sky" data-step="2" style="padding:0;">
-            <div class="arch-head" style="background:var(--bg-badge);color:var(--sky-light);border-bottom:1.5px solid var(--sky-blue);">
-              Grok Bot · 选歌大脑
-            </div>
-            <div class="arch-list" style="padding:18px 22px 22px;justify-content:flex-start;gap:20px;">
-              <div class="shot-frame" style="width:100%;height:316px;">
-                <img src="assets/screenshots/cropped/crop-p5-taste-md.png" alt="taste.md 真实品味规则截图">
-              </div>
-              <div class="player-points" style="margin-top:4px;gap:14px;">
-                <div class="player-point sky">听懂自然语言，按场景选歌</div>
-                <div class="player-point sky">读写 taste.md，沉淀品味与硬规则</div>
-                <div class="player-point sky">调度播放 API，并持续进化</div>
-              </div>
-            </div>
-          </div>
-
-          <div data-step="3" style="display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8px 0;">
-            <div class="pill gold-fill" style="width:100%;padding:12px 18px;font-size:21px;gap:14px;">
-              <span>选歌指令 / API</span>
-              <svg width="34" height="18" viewBox="0 0 34 18"><polygon points="0,6 22,6 22,1 34,9 22,17 22,12 0,12" fill="#F4B66A"/></svg>
-            </div>
-            <img class="sprite" src="assets/sprites/loic-03-conductor.png" alt="Conductor Loic" style="width:330px;height:330px;">
-            <div class="pill" style="width:100%;padding:10px 18px;font-size:19px;background:var(--bg-screen);border-color:var(--border-subtle);gap:14px;">
-              <svg width="34" height="18" viewBox="0 0 34 18"><polygon points="34,6 12,6 12,1 0,9 12,17 12,12 34,12" fill="#88C6FA"/></svg>
-              <span>播放状态 / 赞踩</span>
-            </div>
-          </div>
-
-          <div class="arch-card card gold" data-step="4" style="padding:0;">
-            <div class="arch-head" style="background:var(--bg-panel-alt);color:var(--warm-gold);border-bottom:1.5px solid var(--warm-gold);">
-              Claudio · 后台播放器
-            </div>
-            <div class="arch-list" style="padding:18px 22px 22px;justify-content:flex-start;gap:20px;">
-              <div class="shot-frame" style="width:100%;height:316px;">
-                <img src="assets/screenshots/cropped/crop-p5-player.png" alt="Claudio 真实播放界面截图">
-              </div>
-              <div class="player-points" style="margin-top:4px;gap:14px;">
-                <div class="player-point">Electron 托盘静默常驻</div>
-                <div class="player-point">酷狗直链自动连播</div>
-                <div class="player-point">dfid + 24h 低频保活</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="5"></div></div>
-    </section>
-
-    <!-- SLIDE 06: 05 · 第二步 冷启动 -->
-    <section class="slide" data-slide="6">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 05 · 第二步 冷启动</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">06 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">第二步：喂一次上下文，摸清 1,716 首的底子</h2>
-        <p class="slide-subtitle">历年年度报告 + API 全量扫库，一次建好选歌底座</p>
-      </div>
-      <div class="slide-body">
-        <div class="three-col-arrows" data-step="1">
-          <div class="card seq-item">
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
-              <span class="pill">01</span><h4 style="font-size:25px;">历年年度报告交给 Bot</h4>
-            </div>
-            <p style="font-size:22px;color:var(--text-body);line-height:1.4;">先摸清多年听歌轮廓</p>
-          </div>
-          <svg class="seq-item" width="28" height="22" viewBox="0 0 28 22" style="justify-self:center;"><polygon points="0,7 16,7 16,1 28,11 16,21 16,15 0,15" fill="#F4B66A"/></svg>
-          <div class="card seq-item">
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
-              <span class="pill gold">02</span><h4 style="font-size:25px;">API 扫描 1,700+ 首分类</h4>
-            </div>
-            <p style="font-size:22px;color:var(--text-body);line-height:1.4;">自动归出轻音乐、开车等场景</p>
-          </div>
-          <svg class="seq-item" width="28" height="22" viewBox="0 0 28 22" style="justify-self:center;"><polygon points="0,7 16,7 16,1 28,11 16,21 16,15 0,15" fill="#F4B66A"/></svg>
-          <div class="card seq-item">
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
-              <span class="pill light">03</span><h4 style="font-size:25px;">本人扫一遍，直接当底座</h4>
-            </div>
-            <p style="font-size:22px;color:var(--text-body);line-height:1.4;">确认无偏差，立刻就能开播</p>
-          </div>
-        </div>
-
-        <div class="s6-bottom-grid" data-step="2">
-          <div class="card screen" style="display:flex;flex-direction:column;justify-content:space-between;padding:22px 24px;border-color:var(--sky-blue);min-height:0;">
-            <div style="font-size:23px;font-weight:700;color:var(--sky-light);flex-shrink:0;">2025 酷狗年度报告</div>
-            <div class="shot-frame" style="margin:auto 0;width:100%;max-height:365px;background:var(--bg-panel);border-color:var(--border-bright);padding:4px;">
-              <img src="assets/screenshots/cropped/crop-p6-annual-2025.png" alt="2025 酷狗年度听歌报告原图" style="width:100%;height:auto;">
-            </div>
-            <div style="font-size:20px;font-weight:700;color:var(--warm-gold);text-align:center;flex-shrink:0;">单年听歌 31,491 分钟 · 1,877 首</div>
-          </div>
-
-          <div class="card screen" style="display:flex;flex-direction:column;justify-content:space-between;padding:22px 28px;border-color:var(--border-bright);min-height:0;">
-            <div style="margin-bottom:14px;flex-shrink:0;">
-              <div style="font-size:24px;font-weight:700;color:var(--warm-gold);">曲库底色画像（1,716 首红心）</div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 2px 1fr;gap:24px;flex:1;align-items:start;padding-top:16px;min-height:0;">
-              <div>
-                <div style="font-size:20px;font-weight:700;color:var(--sky-light);margin-bottom:16px;">语种分布</div>
-                <div class="bar-row" style="margin-bottom:16px;"><span style="font-size:20px;color:var(--text-body);">华语</span><div class="bar-track"><div class="bar-fill" style="--bar-w:70%;background:var(--sky-blue);transition-delay:0.2s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-blue);text-align:right;">70%</span></div>
-                <div class="bar-row" style="margin-bottom:16px;"><span style="font-size:20px;color:var(--text-body);">英文</span><div class="bar-track"><div class="bar-fill" style="--bar-w:17%;background:var(--sky-light);transition-delay:0.45s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-light);text-align:right;">17%</span></div>
-                <div class="bar-row" style="margin-bottom:28px;"><span style="font-size:20px;color:var(--text-body);">纯音乐</span><div class="bar-track"><div class="bar-fill" style="--bar-w:7%;background:var(--sky-light);transition-delay:0.7s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-light);text-align:right;">6%</span></div>
-
-                <div style="font-size:20px;font-weight:700;color:var(--warm-gold);margin-bottom:16px;">节奏偏好</div>
-                <div class="bar-row" style="margin-bottom:16px;"><span style="font-size:20px;color:var(--text-body);">抒情慢歌</span><div class="bar-track"><div class="bar-fill" style="--bar-w:42%;background:var(--warm-gold);transition-delay:0.95s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--warm-gold);text-align:right;">42%</span></div>
-                <div class="bar-row" style="margin-bottom:0;"><span style="font-size:20px;color:var(--text-body);">中速流行</span><div class="bar-track"><div class="bar-fill" style="--bar-w:35%;background:var(--warm-gold);transition-delay:1.2s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--warm-gold);text-align:right;">35%</span></div>
-              </div>
-
-              <div style="height:100%;background:var(--border-subtle);"></div>
-
-              <div>
-                <div style="font-size:20px;font-weight:700;color:var(--warm-gold);margin-bottom:16px;">红心 Top 5 歌手</div>
-                <div class="bar-row artist-row" style="margin-bottom:24px;"><span style="font-size:20px;font-weight:700;color:var(--text-white);">周杰伦</span><div class="bar-track"><div class="bar-fill" style="--bar-w:100%;background:var(--warm-gold);transition-delay:1.45s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--warm-gold);text-align:right;">90 首</span></div>
-                <div class="bar-row artist-row" style="margin-bottom:24px;"><span style="font-size:20px;color:var(--text-body);">许嵩</span><div class="bar-track"><div class="bar-fill" style="--bar-w:64.4%;background:var(--sky-blue);transition-delay:1.7s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-blue);text-align:right;">58 首</span></div>
-                <div class="bar-row artist-row" style="margin-bottom:24px;"><span style="font-size:20px;color:var(--text-body);">林俊杰</span><div class="bar-track"><div class="bar-fill" style="--bar-w:56.7%;background:var(--sky-blue);transition-delay:1.95s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-blue);text-align:right;">51 首</span></div>
-                <div class="bar-row artist-row" style="margin-bottom:24px;"><span style="font-size:20px;color:var(--text-body);">薛之谦</span><div class="bar-track"><div class="bar-fill" style="--bar-w:38.9%;background:var(--sky-light);transition-delay:2.2s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-light);text-align:right;">35 首</span></div>
-                <div class="bar-row artist-row" style="margin-bottom:0;"><span style="font-size:20px;color:var(--text-body);">邓紫棋</span><div class="bar-track"><div class="bar-fill" style="--bar-w:25.6%;background:var(--sky-light);transition-delay:2.45s;"></div></div><span style="font-size:20px;font-weight:700;color:var(--sky-light);text-align:right;">23 首</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="6"></div></div>
-    </section>
-
-    <!-- SLIDE 07: 06 · 第三步 养熟 -->
-    <section class="slide" data-slide="7">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 06 · 第三步 养熟</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">07 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">第三步：边听边聊，电台慢慢长成你的样子</h2>
-        <p class="slide-subtitle">靠日常极低成本的正负反馈，实时改写 taste.md 里的选歌规则</p>
-      </div>
-      <div class="slide-body">
-        <div class="step3-grid">
-          <div style="display:flex;flex-direction:column;gap:16px;height:100%;">
-            <div class="card" data-step="1" style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;flex:1.18;">
-              <div style="display:flex;align-items:center;gap:14px;">
-                <span class="pill" style="font-size:17px;padding:4px 14px;">方式一 · 播放器一键赞踩</span>
-                <span style="font-size:21px;font-weight:700;color:var(--text-white);">喜欢点大拇指，踩掉即切</span>
-              </div>
-              <div class="shot-frame" style="flex:1;width:100%;min-height:190px;max-height:224px;">
-                <img src="assets/screenshots/cropped/crop-p7-like-bar.png" alt="Claudio 点亮喜欢按钮真机截图">
-              </div>
-            </div>
-
-            <div class="card" data-step="2" style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;flex:1;">
-              <div style="display:flex;align-items:center;gap:14px;">
-                <span class="pill gold" style="font-size:17px;padding:4px 14px;">方式二 · 聊天里直接吐槽</span>
-                <span style="font-size:21px;font-weight:700;color:var(--text-white);">一句话切歌，并记入永久避雷</span>
-              </div>
-              <div class="shot-frame chat-frame gold-border" style="flex:1;width:100%;min-height:142px;max-height:168px;">
-                <img src="assets/screenshots/cropped/crop-p7-chat-dislike.png" alt="聊天框反馈切歌并避雷真实截图">
-              </div>
-            </div>
-
-            <div class="card screen sky" data-step="4" style="padding:14px 22px;">
-              <div style="font-size:19px;font-weight:700;color:var(--sky-light);margin-bottom:10px;">
-                持续养成闭环
-              </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-                <div style="flex:1;background:var(--bg-panel-alt);border:1.5px solid var(--border-subtle);border-radius:12px;padding:11px 10px;text-align:center;font-size:20px;font-weight:700;">听歌反馈</div>
-                <svg width="24" height="20" viewBox="0 0 24 20"><polygon points="0,6 13,6 13,1 24,10 13,19 13,14 0,14" fill="#F4B66A"/></svg>
-                <div style="flex:1.1;background:var(--bg-panel-alt);border:1.5px solid var(--border-subtle);border-radius:12px;padding:11px 10px;text-align:center;font-size:20px;font-weight:700;">改写规则</div>
-                <svg width="24" height="20" viewBox="0 0 24 20"><polygon points="0,6 13,6 13,1 24,10 13,19 13,14 0,14" fill="#F4B66A"/></svg>
-                <div style="flex:1;background:var(--bg-panel-alt);border:1.5px solid var(--warm-gold);border-radius:12px;padding:11px 10px;text-align:center;font-size:20px;font-weight:700;color:var(--warm-gold);">下次更准</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="taste-card" data-step="3">
-            <div class="taste-title" style="justify-content:space-between;">
-              <span>taste.md · 品味档案</span>
-              <span style="font-family:var(--font-mono);font-size:17px;color:var(--text-muted);font-weight:700;">实时读写</span>
-            </div>
-            <div class="taste-rules">
-              <div class="rule-item seq-item"><span class="pill">规则</span><span class="desc">原版优先，自习不放 Live / DJ 版</span></div>
-              <div class="rule-item seq-item"><span class="pill">规则</span><span class="desc">同一歌手最多连续 3 首</span></div>
-              <div class="rule-item seq-item"><span class="pill">规则</span><span class="desc" style="color:var(--text-white);font-weight:700;">点歌后直接放，不用先问我</span></div>
-              <div class="rule-item seq-item" style="max-width:600px;"><span class="pill red">避雷</span><span class="desc">点踩《Weightless》后不再推</span></div>
-              <div class="rule-item seq-item" style="max-width:600px;"><span class="pill">规则</span><span class="desc">跳过单曲，不误杀整类曲风</span></div>
-            </div>
-
-            <div class="card gold-tint" style="max-width:540px;padding:16px 22px;font-size:23px;font-weight:700;color:var(--warm-gold);">
-              无需写代码，聊着天就能改规则。
-            </div>
-            <img class="sprite thumbs-mascot" data-step="4" src="assets/sprites/loic-04-thumbsup.png" alt="Loic Thumbs Up">
-          </div>
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="7"></div></div>
-    </section>
-
-    <!-- SLIDE 08: 07 · 现场演示 -->
-    <section class="slide" data-slide="8">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 07 · 现场演示</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">08 / 10</span></div>
-      </div>
-      <div class="slide-header" style="margin-bottom:14px;">
-        <h2 class="slide-title">90 秒，走一遍完整链路</h2>
-      </div>
-      <div class="slide-body">
-        <div class="video-bezel">
-          <div class="video-viewport" id="videoDropZone">
-            <video id="demoVideo" controls playsinline src="demo.mp4"></video>
-
-            <div class="video-placeholder" id="videoPlaceholder" onclick="document.getElementById('videoFileInput').click()">
-              <div class="btn-circle play" style="width:136px;height:136px;">
-                <svg width="58" height="58" viewBox="0 0 58 58"><polygon points="18,10 49,29 18,48" fill="#F4B66A"/></svg>
-              </div>
-              <div style="font-size:28px;font-weight:700;">演示视频播放区（放入同目录 demo.mp4 自动加载，或点击选择本地 MP4）</div>
-              <div style="font-size:22px;color:var(--sky-light);">保留原声音乐 · 现场口播讲解 · 约 60–90 秒</div>
-              <input id="videoFileInput" type="file" accept="video/mp4,video/webm,video/quicktime" style="display:none;">
-            </div>
-          </div>
-        </div>
-
-        <div class="demo-steps-row">
-          <div class="demo-chip"><span class="pill">01</span><span>用自然语言说场景</span></div>
-          <svg width="24" height="20" viewBox="0 0 24 20" style="justify-self:center;"><polygon points="0,6 13,6 13,1 24,10 13,19 13,14 0,14" fill="#F4B66A"/></svg>
-          <div class="demo-chip"><span class="pill">02</span><span>Bot 选歌、排进队列</span></div>
-          <svg width="24" height="20" viewBox="0 0 24 20" style="justify-self:center;"><polygon points="0,6 13,6 13,1 24,10 13,19 13,14 0,14" fill="#F4B66A"/></svg>
-          <div class="demo-chip"><span class="pill">03</span><span>Claudio 后台静默开播</span></div>
-          <svg width="24" height="20" viewBox="0 0 24 20" style="justify-self:center;"><polygon points="0,6 13,6 13,1 24,10 13,19 13,14 0,14" fill="#F4B66A"/></svg>
-          <div class="demo-chip" style="border-color:var(--warm-gold);"><span class="pill gold">04</span><span style="color:var(--warm-gold);">反馈写进品味记忆</span></div>
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="8"></div></div>
-    </section>
-
-    <!-- SLIDE 09: 08 · 总结 -->
-    <section class="slide" data-slide="9">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot"></span><span>LOIC FM 88.8 // 08 · 总结</span></div>
-        <div class="hud-right"><span class="hud-meta">GROK BOT 线下沙龙 · 洛伊客</span><span class="page-pill">09 / 10</span></div>
-      </div>
-      <div class="slide-header">
-        <h2 class="slide-title">把琐碎交给 Bot，人只管听</h2>
-        <p class="slide-subtitle">从 1,716 首杂乱红心到专属私人电台，核心只有三件事</p>
-      </div>
-      <div class="slide-body">
-        <div class="three-col" data-step="1">
-          <div class="pillar-card seq-item">
-            <div class="pillar-bar" style="background:var(--sky-blue);"></div>
-            <div class="pillar-head"><span class="pillar-num" style="color:var(--sky-blue);">01</span><span class="pillar-title">零负担冷启动</span></div>
-            <div><span class="pill">一次摸底</span></div>
-            <div class="pillar-desc">年度报告 + 全量扫库，一次摸清底色</div>
-          </div>
-          <div class="pillar-card seq-item">
-            <div class="pillar-bar" style="background:var(--warm-gold);"></div>
-            <div class="pillar-head"><span class="pillar-num" style="color:var(--warm-gold);">02</span><span class="pillar-title">一句话点歌</span></div>
-            <div><span class="pill gold">无感交互</span></div>
-            <div class="pillar-desc">自然语言下单，Claudio 后台静默开播</div>
-          </div>
-          <div class="pillar-card seq-item">
-            <div class="pillar-bar" style="background:var(--sky-light);"></div>
-            <div class="pillar-head"><span class="pillar-num" style="color:var(--sky-light);">03</span><span class="pillar-title">越聊越懂</span></div>
-            <div><span class="pill light">持续进化</span></div>
-            <div class="pillar-desc">每次赞踩和吐槽，都在改写选歌标准</div>
-          </div>
-        </div>
-
-        <div class="manifesto" data-step="2">
-          「好的 Personal Agent 不是又一个要伺候的软件，<br>
-          而是帮你接住琐碎、在后台默默陪着你的老朋友。」
-        </div>
-      </div>
-      <div class="hud-footer"><span class="footer-brand">PERSONAL AGENT RADIO · GROK BOT × CLAUDIO</span><div class="footer-ticks" data-page="9"></div></div>
-    </section>
-
-    <!-- SLIDE 10: THANK YOU -->
-    <section class="slide" data-slide="10">
-      <div class="hud-bar">
-        <div class="hud-left"><span class="led-dot gold"></span><span style="color:var(--warm-gold);">LOIC FM 88.8 // SIGNAL CONTINUES · THANK YOU</span></div>
-        <div class="hud-right"><span class="page-pill">10 / 10</span></div>
-      </div>
-
-      <div class="thanks-grid">
-        <div class="thanks-left">
-          <div>
-            <h1 style="font-size:74px;font-weight:700;line-height:1.12;margin-top:16px;">谢谢大家！</h1>
-            <p style="font-size:25px;font-weight:700;color:var(--sky-light);margin-top:14px;">欢迎 Q&amp;A，一起折腾更懂自己的 Personal Agent</p>
-          </div>
-
-          <div style="display:flex;flex-direction:column;align-items:center;margin:10px 0;">
-            <img class="sprite" src="assets/sprites/loic-05-thanks.png" alt="Loic Waving Thanks" style="width:390px;height:390px;">
-            <div class="mascot-ring" style="width:360px;height:48px;border-color:var(--warm-gold);margin-top:-32px;"></div>
-          </div>
-
-          <div class="card" style="padding:20px 28px;">
-            <div style="font-size:28px;font-weight:700;color:var(--warm-gold);">分享者：洛伊客</div>
-            <div style="font-size:22px;color:var(--text-body);margin-top:6px;">2026.11.22（周日）· Grok Bot 线下沙龙</div>
-          </div>
-        </div>
-
-        <div class="thanks-right">
-          <div class="x-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span class="pill">X / Twitter</span>
-              <span style="font-size:19px;font-weight:700;color:var(--text-body);">@loic05046 · AI 实践与 Agent 折腾记录</span>
-            </div>
-            <div class="x-inner">
-              <div class="white-frame" style="width:515px;height:330px;padding:6px;">
-                <img src="assets/user/x-profile.jpg" alt="Loic X Profile" style="width:100%;height:100%;object-fit:cover;">
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
-                <div class="white-frame" style="width:230px;height:230px;border:2px solid var(--sky-blue);">
-                  <img src="assets/user/x-qr.png" alt="X QR Code">
-                </div>
-                <div style="font-size:18px;font-weight:700;color:var(--sky-light);text-align:center;line-height:1.3;">
-                  扫码直达 X<br>@loic05046
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="wechat-card">
-            <div class="white-frame" style="width:356px;height:356px;border:2.5px solid var(--warm-gold);padding:6px;">
-              <img src="assets/wechat-qr-pure.png" alt="WeChat QR Code">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:16px;">
-              <div><span class="pill gold">欢迎加微信交流</span></div>
-              <div style="font-size:36px;font-weight:700;">loic_洛伊客</div>
-              <div style="font-size:22px;color:var(--text-body);line-height:1.52;">
-                扫码备注「Grok Bot」<br>
-                交流 Claudio 与品味记忆实践
-              </div>
-              <div class="pill gold-fill" style="padding:11px 20px;font-size:19px;">
-                期待会后继续聊 · 随时欢迎连接
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="hud-footer"><span class="footer-brand">LOIC FM 88.8 · END OF BROADCAST</span><div class="footer-ticks" data-page="10"></div></div>
-    </section>
-
+<div class="stage">
+  <div class="chrome">
+    <span class="onair"><i></i><b>LOIC FM 88.8</b>&nbsp;· ON AIR</span>
+    <span class="pg"><b data-page>01</b> / <span data-total>10</span></span>
   </div>
+
+  <!-- 01 封面 -->
+  <section class="slide s1">
+    <div>
+      <div class="kicker">Grok Bot 线下沙龙 · 2026.11.22</div>
+      <h1>我如何用 Grok Bot<br>打造<span class="em">「越用越懂我」</span><br>的私人电台</h1>
+      <p class="sub">Grok Bot 做选歌大脑，自制播放器 Claudio 在后台静默放歌。</p>
+      <div class="meta"><span>HOST&nbsp;&nbsp;<b>洛伊客</b></span><span>X&nbsp;&nbsp;<b>@loic05046</b></span></div>
+    </div>
+    <div class="host">
+      <div class="ring" style="width:620px;height:620px"></div>
+      <div class="ring" style="width:780px;height:780px;opacity:.5"></div>
+      <div class="halo"></div>
+      <img src="../assets/sprites/loic-01-console.png" alt="DJ 洛伊客">
+    </div>
+    <div class="dial">
+      <div class="ticks"></div><div class="needle"></div>
+      <span class="lbl" style="left:0">88</span><span class="lbl" style="left:25%">93</span><span class="lbl" style="left:50%">98</span><span class="lbl" style="left:75%">103</span><span class="lbl" style="right:0">108 MHz</span>
+    </div>
+  </section>
+
+  <!-- 02 痛点 -->
+  <section class="slide s2">
+    <div class="grid">
+      <div>
+        <div class="kicker">01 · 真实痛点</div>
+        <h2>听了 18 万分钟的歌，<br>却越来越不想<em>自己选歌</em></h2>
+        <div class="bignum"><span data-count="183385">183,385</span><small>分钟</small></div>
+        <div class="numcap">酷狗累计听歌时长</div>
+        <div class="heart"><b data-count="1716">1,716</b>首红心，全堆在「我喜欢」里</div>
+      </div>
+      <div class="right-col">
+        <div class="scenes">
+          <div class="scene" data-step="1"><span class="t">23:40</span><div><div class="a">睡前放松，随机蹦出一首炸场 DJ</div><div class="b">心流被打断，只能切出去手忙脚乱找歌</div></div></div>
+          <div class="scene" data-step="2"><span class="t">14:00</span><div><div class="a">图书馆单曲循环纯音乐，越听越腻</div><div class="b">想换几首同样安静的新歌，又怕破坏氛围</div></div></div>
+        </div>
+        <p class="punch" data-step="3">我想要的不是更多歌单，<br>而是一个<span class="em">懂歌、也懂我此刻状态</span>的主持人。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 现在的样子 -->
+  <section class="slide s3">
+    <div class="kicker">02 · 现在的样子</div>
+    <h2>点歌，就是<em>跟朋友聊一句</em></h2>
+    <div class="chats">
+      <div class="chat" data-step="1">
+        <div class="tag"><b>精准点播</b><span>01</span></div>
+        <div class="bub me">给我来一首晴天</div>
+        <div class="bub bot">给你换成周杰伦《晴天》。</div>
+        <div class="tool">切歌放《晴天》</div>
+      </div>
+      <div class="chat" data-step="2">
+        <div class="tag"><b>氛围配乐</b><span>02</span></div>
+        <div class="bub me">我在河边散步，来点应景的歌。歌单里没有合适的，就自己找几首</div>
+        <div class="bub bot">陶喆《沙滩》已经播起来了，后面接《旅行的意义》《风吹麦浪》，续播也换成了散步这一路。</div>
+      </div>
+      <div class="chat" data-step="3">
+        <div class="tag"><b>目标场景</b><span>03</span></div>
+        <div class="bub me">我在图书馆自习，来点帮我提高专注的歌</div>
+        <div class="bub bot">切回轻柔、少人声的自习器乐。正在播 Nils Frahm《Ambre》，后续也从自习器乐池里接。</div>
+      </div>
+    </div>
+    <div class="foot" data-step="4"><img src="../assets/screenshots/cropped/crop-p4-mini.png" alt="Claudio 迷你模式">日常只跟 Grok Bot 说话，Claudio 安静待在后台，不弹窗、不抢焦点。</div>
+  </section>
+
+  <!-- 04 前传 -->
+  <section class="slide s4">
+    <div class="kicker">03 · 为什么是 Grok Bot</div>
+    <h2>同一个播放器，换了个大脑，<br>才从<em>吃灰玩具</em>变成每天在用</h2>
+    <div class="vs">
+      <div class="vs-head"><div class="hd">旧版 · Claude Code 直连</div><div class="hd"></div><div class="hd r">现在 · Grok Bot 接管</div></div>
+      <div class="row" data-step="1"><div class="c old"><span>每次新对话都失忆</span><small>重开会话，品味清零</small></div><div class="ar">→</div><div class="c new">自带跨会话记忆<small>越聊越贴合习惯</small></div></div>
+      <div class="row" data-step="2"><div class="c old"><span>切首歌也烧 CLI 额度</span><small>用编程主力干杂活，太心疼</small></div><div class="ar">→</div><div class="c new">日常对话里顺手调 API<small>轻量，毫无负担</small></div></div>
+      <div class="row" data-step="3"><div class="c old"><span>酷狗掉线，还把手机挤下线</span><small>缺少设备身份</small></div><div class="ar">→</div><div class="c new">dfid + 24h 自动保活<small>稳稳挂在后台</small></div></div>
+    </div>
+  </section>
+
+  <!-- 05 第一步 -->
+  <section class="slide s5">
+    <div class="kicker">04 · 第一步　建主持人</div>
+    <h2>一句话，雇一个<em>专职主持人</em></h2>
+    <div class="grid">
+      <div>
+        <p class="quote" data-step="1">「帮我建一个专职 Bot：管理 Claudio、按场景选歌、持续记住我的品味。」</p>
+        <div class="arch" data-step="2">
+          <div class="node brain"><span class="n">BRAIN</span><h3>Grok Bot</h3><ul><li>听懂自然语言</li><li>读写 taste.md</li><li>调度 API</li></ul></div>
+          <div class="link"><span>选歌指令</span><span class="ln"></span><span class="ln back"></span><span>状态 / 赞踩</span></div>
+          <div class="node"><span class="n">PLAYER</span><h3>Claudio</h3><ul><li>Electron 托盘常驻</li><li>酷狗直链连播</li><li>低频保活</li></ul></div>
+        </div>
+      </div>
+      <div data-step="3">
+        <div class="shot"><img src="../assets/screenshots/cropped/crop-p5-player.png" alt="Claudio 播放界面"></div>
+        <div class="cap">CLAUDIO · 真机播放界面</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 第二步 -->
+  <section class="slide s6">
+    <div class="kicker">05 · 第二步　冷启动</div>
+    <h2>喂一次上下文，摸清 <em>1,716 首</em>的底子</h2>
+    <div class="steps3">
+      <div><b>01</b>历年年度报告交给 Bot</div>
+      <div><b>02</b>API 扫描 1,700+ 首自动分类</div>
+      <div><b>03</b>本人扫一遍，直接当底座</div>
+    </div>
+    <div class="grid">
+      <div data-step="1">
+        <div class="shot"><img src="../assets/screenshots/cropped/crop-p6-annual-2025.png" alt="2025 酷狗年度报告"></div>
+        <div class="cap">2025 年度报告 · 31,491 分钟 · 1,877 首</div>
+      </div>
+      <div data-step="2">
+        <div class="bars">
+          <div><h4>语种</h4>
+            <div class="bar"><div class="l">华语<b>70%</b></div><div class="tr"><i style="--w:70%"></i></div></div>
+            <div class="bar"><div class="l">英文<b>17%</b></div><div class="tr"><i style="--w:17%"></i></div></div>
+            <div class="bar"><div class="l">纯音乐<b>6%</b></div><div class="tr"><i style="--w:6%"></i></div></div>
+          </div>
+          <div><h4>节奏</h4>
+            <div class="bar"><div class="l">抒情慢歌<b>42%</b></div><div class="tr"><i style="--w:42%"></i></div></div>
+            <div class="bar"><div class="l">中速流行<b>35%</b></div><div class="tr"><i style="--w:35%"></i></div></div>
+          </div>
+        </div>
+        <div class="top"><h4>红心 TOP 5</h4>
+          <ol>
+            <li><span>01</span><b>周杰伦</b><em>90</em></li>
+            <li><span>02</span><b>许嵩</b><em>58</em></li>
+            <li><span>03</span><b>林俊杰</b><em>51</em></li>
+            <li><span>04</span><b>薛之谦</b><em>35</em></li>
+            <li><span>05</span><b>邓紫棋</b><em>23</em></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 第三步 -->
+  <section class="slide s7">
+    <div class="kicker">06 · 第三步　养熟</div>
+    <h2>边听边聊，电台慢慢<em>长成你的样子</em></h2>
+    <div class="grid">
+      <div>
+        <div class="mode" data-step="1">
+          <div class="h"><b>方式一</b>播放器一键赞踩</div>
+          <div class="shot"><img src="../assets/screenshots/cropped/crop-p7-like-bar.png" alt="Claudio 赞踩按钮"></div>
+        </div>
+        <div class="mode" data-step="2">
+          <div class="h"><b>方式二</b>聊天里直接吐槽</div>
+          <div class="chat">
+            <div class="bub me">当前这首歌我不喜欢，换</div>
+            <div class="bub bot">好，已经切掉，也记下你不喜欢这首，以后不会再排。现在放的是 Bruno Mars《Just The Way You Are》。</div>
+          </div>
+        </div>
+      </div>
+      <div data-step="3">
+        <div class="doc">
+          <div class="fn"><b>taste.md</b><span>品味档案</span></div>
+          <ul>
+            <li><span>规则</span>原版优先，自习不放 Live / DJ 版</li>
+            <li><span>规则</span>同一歌手最多连续 3 首</li>
+            <li><span>规则</span>点歌后直接放，不用先问我</li>
+            <li class="x"><span>避雷</span>点踩《Weightless》后不再推</li>
+            <li><span>规则</span>跳过单曲，不误杀整类曲风</li>
+          </ul>
+        </div>
+        <div class="loop"><b>听歌反馈</b><i>→</i><b>改写规则</b><i>→</i><b>下次更准</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 演示 -->
+  <section class="slide s8">
+    <div class="kicker">07 · 现场演示</div>
+    <h2>90 秒，走一遍完整链路</h2>
+    <div class="grid">
+      <div class="demo" data-demo>
+        <video src="../demo.mp4" preload="auto" playsinline></video>
+        <label class="ph"><span class="pl"></span>点击选择演示视频<input type="file" accept="video/*"></label>
+        <div class="vol-ctrl" data-noadvance title="音量调节（快捷键 - / + / M）">
+          <button type="button" class="vol-btn" data-vol-mute aria-label="静音切换">
+            <svg class="ic-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            <svg class="ic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+          </button>
+          <input type="range" class="vol-slider" min="0" max="100" step="5" value="45" data-vol-slider aria-label="视频音量">
+          <span class="vol-val" data-vol-val>45%</span>
+        </div>
+        <span class="hint">→ / 点击 全屏播放 · -/+ 调音量</span>
+      </div>
+      <div>
+        <ol class="flow">
+          <li><b>01</b>用自然语言说场景</li>
+          <li><b>02</b>Bot 选歌、排进队列</li>
+          <li><b>03</b>Claudio 后台静默开播</li>
+          <li><b>04</b>反馈写进品味记忆</li>
+        </ol>
+        <div class="cap">原声音乐 · 现场口播</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 收口 -->
+  <section class="slide s9">
+    <div class="kicker">08 · 总结</div>
+    <h2>把琐碎交给 Bot，<em>人只管听</em></h2>
+    <div class="three">
+      <div data-step="1"><b>01</b><h3>零负担冷启动</h3><p>年度报告 + 全量扫库，一次摸清底色</p></div>
+      <div data-step="1"><b>02</b><h3>一句话点歌</h3><p>自然语言下单，后台静默开播</p></div>
+      <div data-step="1"><b>03</b><h3>越聊越懂</h3><p>每次赞踩和吐槽，都在改写选歌标准</p></div>
+    </div>
+    <p class="coda" data-step="2">好的 Personal Agent 不是又一个要伺候的软件，<br>而是帮你接住琐碎、在后台<span class="em">默默陪着你</span>的老朋友。</p>
+  </section>
+
+  <!-- 10 致谢 -->
+  <section class="slide s10">
+    <div>
+      <div class="kicker">Signal continues</div>
+      <h1>谢谢大家！</h1>
+      <p class="lead">欢迎 Q&amp;A，一起折腾更懂自己的 Personal Agent。</p>
+      <div class="mascot-row">
+        <div class="thanks-host">
+          <div class="ring"></div>
+          <div class="halo"></div>
+          <div class="floor"></div>
+          <img src="../assets/sprites/loic-05-thanks.png" alt="挥手的数码小人洛伊客">
+        </div>
+        <div class="invite">
+          <div class="bubble">
+            <strong>欢迎扫码关注我，加我微信！</strong>
+            <span>一起交流 Grok Bot 与 Personal Agent 实践</span>
+          </div>
+          <div class="arrow-wrap">
+            <span>SCAN HERE</span>
+            <svg class="arrow-svg" viewBox="0 0 220 54" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M6 34 C 66 8, 134 10, 206 27" stroke="#F2A541" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="7 7"/>
+              <path d="M190 15 L 210 28 L 188 38" stroke="#FFC978" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="who-line">HOST <b>洛伊客</b> &nbsp;·&nbsp; 2026.11.22 Grok Bot 线下沙龙</div>
+    </div>
+    <div class="qr-panel">
+      <div class="qr-head">
+        <span class="ttl"><i></i>扫码关注 &amp; 加我微信</span>
+        <span class="pill">随时来聊</span>
+      </div>
+      <div class="qrs">
+        <div class="qr">
+          <div class="box"><img src="../assets/user/x-qr.png" alt="X 二维码"></div>
+          <p>@loic05046<span>X / Twitter · 扫码关注</span></p>
+        </div>
+        <div class="qr">
+          <div class="box"><img src="../assets/wechat-qr-pure.png" alt="微信二维码"></div>
+          <p>loic_洛伊客<span>微信 · 备注「Grok Bot」</span></p>
+        </div>
+      </div>
+      <div class="qr-foot">对 <b>Claudio 播放器</b> 或 <b>品味记忆规则</b> 感兴趣，扫码加微信继续聊</div>
+    </div>
+    <div class="end">LOIC FM 88.8 · END OF BROADCAST</div>
+  </section>
+
+  <div class="prog" data-progress></div>
 </div>
-
-<div id="videoTheater"></div>
-
-<div id="navControls">
-  <button class="nav-btn" onclick="prevStepOrSlide()">PREV</button>
-  <button class="nav-btn" id="pageIndicator">01 / 10</button>
-  <button class="nav-btn" onclick="nextStepOrSlide()">NEXT</button>
-  <button class="nav-btn" onclick="toggleFullscreen()">FULL</button>
-</div>
-
-<script>
-  const slides = Array.from(document.querySelectorAll('.slide'));
-  const totalSlides = slides.length;
-  const params = new URLSearchParams(window.location.search);
-  const isStatic = params.get('static') === '1';
-  if (isStatic) document.body.classList.add('static-mode');
-
-  let current = Math.min(Math.max(parseInt(params.get('slide') || '1', 10) || 1, 1), totalSlides);
-  const slideSteps = slides.map(s => {
-    const nums = Array.from(s.querySelectorAll('[data-step]')).map(el => parseInt(el.dataset.step, 10));
-    return nums.length ? Math.max(...nums) : 0;
-  });
-  let currentStep = isStatic ? slideSteps[current - 1] : 0;
-
-  document.querySelectorAll('.footer-ticks').forEach(container => {
-    const page = parseInt(container.dataset.page, 10);
-    for (let i = 1; i <= totalSlides; i++) {
-      const span = document.createElement('span');
-      span.className = 'tick' + (i === page ? ' current' : (i < page ? ' past' : ''));
-      container.appendChild(span);
-    }
-  });
-
-  function applyStepState(slideEl, step) {
-    slideEl.querySelectorAll('[data-step]').forEach(el => {
-      const s = parseInt(el.dataset.step, 10);
-      el.classList.toggle('revealed', isStatic || s <= step);
-    });
-  }
-
-  const demoVideo = document.getElementById('demoVideo');
-  const videoDropZone = document.getElementById('videoDropZone');
-  const videoTheater = document.getElementById('videoTheater');
-  const videoPlaceholder = document.getElementById('videoPlaceholder');
-  const videoFileInput = document.getElementById('videoFileInput');
-  let videoLoaded = false;
-
-  function enterVideoTheater(autoPlay = true) {
-    if (isStatic || !videoLoaded) return;
-    if (!videoTheater.contains(demoVideo)) {
-      videoTheater.appendChild(demoVideo);
-    }
-    videoTheater.classList.add('open');
-    demoVideo.style.display = 'block';
-    if (autoPlay) {
-      demoVideo.currentTime = 0;
-      demoVideo.play().catch(() => {});
-    }
-  }
-
-  function exitVideoTheater() {
-    if (videoTheater.classList.contains('open')) {
-      demoVideo.pause();
-      videoTheater.classList.remove('open');
-      if (!videoDropZone.contains(demoVideo)) {
-        videoDropZone.insertBefore(demoVideo, videoPlaceholder);
-      }
-    } else {
-      demoVideo.pause();
-    }
-  }
-
-  function showSlide(n, revealAll = false) {
-    const prevSlide = current;
-    current = Math.min(Math.max(n, 1), totalSlides);
-    if (prevSlide === 8 && current !== 8) {
-      exitVideoTheater();
-    }
-    currentStep = (isStatic || revealAll) ? slideSteps[current - 1] : 0;
-    slides.forEach((s, idx) => {
-      const active = (idx + 1 === current);
-      s.classList.toggle('active', active);
-      if (active) applyStepState(s, currentStep);
-    });
-    document.getElementById('pageIndicator').textContent =
-      String(current).padStart(2, '0') + ' / ' + String(totalSlides).padStart(2, '0');
-    if (current === 8 && !isStatic && !revealAll) {
-      enterVideoTheater(true);
-    }
-  }
-
-  function nextStepOrSlide() {
-    if (current === 8 && videoTheater.classList.contains('open')) {
-      exitVideoTheater();
-      showSlide(9, false);
-      return;
-    }
-    const maxStep = slideSteps[current - 1];
-    if (!isStatic && currentStep < maxStep) {
-      currentStep++;
-      applyStepState(slides[current - 1], currentStep);
-    } else if (current < totalSlides) {
-      showSlide(current + 1, false);
-    }
-  }
-
-  function prevStepOrSlide() {
-    if (current === 8 && videoTheater.classList.contains('open')) {
-      exitVideoTheater();
-      showSlide(7, true);
-      return;
-    }
-    if (!isStatic && currentStep > 0) {
-      currentStep--;
-      applyStepState(slides[current - 1], currentStep);
-    } else if (current > 1) {
-      showSlide(current - 1, true);
-    }
-  }
-
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.();
-    } else {
-      document.exitFullscreen?.();
-    }
-  }
-
-  function fitStage() {
-    const stage = document.getElementById('stage');
-    const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    stage.style.transform = `translate(-50%, -50%) scale(${scale})`;
-  }
-  window.addEventListener('resize', fitStage);
-  document.addEventListener('fullscreenchange', fitStage);
-  fitStage();
-  showSlide(current, isStatic);
-
-  window.addEventListener('keydown', (e) => {
-    if (['ArrowRight', 'PageDown'].includes(e.key)) { e.preventDefault(); nextStepOrSlide(); }
-    else if (e.key === ' ') {
-      e.preventDefault();
-      if (current === 8 && videoTheater.classList.contains('open')) {
-        if (demoVideo.paused) demoVideo.play().catch(() => {}); else demoVideo.pause();
-      } else {
-        nextStepOrSlide();
-      }
-    }
-    else if (e.key.toLowerCase() === 'p' && current === 8) {
-      e.preventDefault();
-      if (demoVideo.paused) demoVideo.play().catch(() => {}); else demoVideo.pause();
-    }
-    else if (e.key === 'Escape' && videoTheater.classList.contains('open')) {
-      e.preventDefault();
-      exitVideoTheater();
-    }
-    else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); prevStepOrSlide(); }
-    else if (e.key === 'Home') { e.preventDefault(); showSlide(1, false); }
-    else if (e.key === 'End') { e.preventDefault(); showSlide(totalSlides, true); }
-    else if (e.key.toLowerCase() === 'f') { toggleFullscreen(); }
-  });
-
-  // Live equalizer canvas on Cover
-  const eqCanvas = document.getElementById('eqCanvas');
-  if (eqCanvas) {
-    const ctx = eqCanvas.getContext('2d');
-    const barCount = 9;
-    const baseHeights = [0.35, 0.72, 0.50, 0.92, 0.65, 1.0, 0.55, 0.80, 0.42];
-    let t = 0;
-
-    function drawEq() {
-      ctx.clearRect(0, 0, eqCanvas.width, eqCanvas.height);
-      const bw = 20;
-      const gap = 9;
-      for (let i = 0; i < barCount; i++) {
-        const wave = isStatic ? 0 : Math.sin(t * 0.08 + i * 0.75) * 0.22 + Math.cos(t * 0.05 + i * 1.1) * 0.12;
-        const frac = Math.min(1, Math.max(0.14, baseHeights[i] + wave));
-        const bh = Math.round(eqCanvas.height * frac);
-        const x = i * (bw + gap);
-        const y = eqCanvas.height - bh;
-        ctx.fillStyle = (i % 3 === 1) ? '#F4B66A' : '#469BE7';
-        ctx.beginPath();
-        ctx.roundRect(x, y, bw, bh, 5);
-        ctx.fill();
-      }
-      if (!isStatic) {
-        t++;
-        requestAnimationFrame(drawEq);
-      }
-    }
-    drawEq();
-  }
-
-  demoVideo.addEventListener('loadeddata', () => {
-    videoLoaded = true;
-    demoVideo.style.display = 'block';
-    videoPlaceholder.style.display = 'none';
-    if (current === 8 && !isStatic && !videoTheater.classList.contains('open')) {
-      enterVideoTheater(true);
-    }
-  });
-
-  videoFileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    demoVideo.src = URL.createObjectURL(file);
-    videoLoaded = true;
-    demoVideo.style.display = 'block';
-    videoPlaceholder.style.display = 'none';
-    enterVideoTheater(true);
-  });
-</script>
+<script src="engine.js"></script>
 </body>
 </html>
