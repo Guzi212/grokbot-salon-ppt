@@ -3,6 +3,12 @@
 **主题**：我如何用 Grok Bot 打造「越用越懂我」的私人电台？
 **分享者**：洛伊客（[X 主页](https://x.com/loic05046)）
 
+## 在线观看
+
+- 网页版演讲稿（推荐演示用）：https://guzi212.github.io/grokbot-salon-ppt/
+- PPTX 在线预览（微软 Office 查看器）：https://view.officeapps.live.com/op/view.aspx?src=https%3A%2F%2Fguzi212.github.io%2Fgrokbot-salon-ppt%2Floic-salon-ppt.pptx
+- PPTX 下载：https://guzi212.github.io/grokbot-salon-ppt/loic-salon-ppt.pptx
+
 ## 文件
 
 - `index.html` — 浏览器直接打开的交互演讲稿（新方案最终版）
